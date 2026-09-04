@@ -1,8 +1,8 @@
 // Camera pilotee en coordonnees spheriques autour d'une cible deplacable.
 //
 //   molette          -> zoom (distance camera <-> cible)
-//   clic-glisser     -> pan 2D (on deplace la cible dans le plan de l'ecran)
-//   Alt + glisser    -> orbite 3D (azimut / elevation)
+//   clic-glisser     -> orbite 3D (azimut / elevation) : le geste principal
+//   Alt + glisser    -> pan 2D (on deplace la cible dans le plan de l'ecran)
 //
 // Ecrit a la main plutot qu'avec OrbitControls : le schema demande ne
 // correspond pas aux gestes par defaut d'OrbitControls, et 80 lignes lisibles
@@ -81,9 +81,9 @@ export function brancherControles(element, crochets) {
     if (glisseNote) {
       crochets.surGlisserNote?.(e.clientX, e.clientY)
     } else if (e.altKey) {
-      orbiter(dx, dy)
-    } else {
       panoramiquer(dx, dy)
+    } else {
+      orbiter(dx, dy)
     }
     appliquerCamera()
   })
