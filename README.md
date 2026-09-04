@@ -1,8 +1,12 @@
 # Mindmap
 
-Mindmap fractale a navigation spatiale : chaque note contient ses propres
-notes. Un clic zoome a l'interieur d'une note pour reveler ses notes filles,
-le bouton retour remonte d'un niveau.
+Mindmap 3D a navigation spatiale : chaque note contient ses propres notes.
+
+**Un seul monde continu.** Ouvrir une note fait apparaitre ses notes filles
+*autour d'elle*, dans le meme espace, reliees par un trait -- le niveau
+precedent reste visible. Il n'y a jamais de bascule vers une scene isolee :
+on ne change pas de fenetre, le monde grandit autour de ce qu'on ouvre. Le
+contenu de la note ouverte s'affiche dans un panneau lateral.
 
 Piece de portfolio : **Three.js, aucune librairie de mind-map**.
 

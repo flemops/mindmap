@@ -70,25 +70,45 @@ html, body {
   margin-bottom: .55rem;
 }
 
-#hud {
+/* Panneau lateral : le contenu de la note ouverte. Il ne remplace jamais la
+   scene -- le monde reste visible a cote, c'est tout l'interet. */
+#panneau-note {
   top: 1rem;
   left: 1rem;
-  width: min(320px, calc(100vw - 2rem));
+  width: min(340px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+#panneau-note[hidden] { display: none !important; }
+
+.panneau-tete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
 }
 
-.hud-valeur {
-  margin: 0 0 .4rem;
+#bouton-fermer-note {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+#titre-note {
+  margin: .2rem 0 .5rem;
   color: var(--texte);
-  font-size: .95rem;
+  font-size: 1rem;
+  font-weight: 600;
 }
 
 #contenu-note {
-  margin: 0 0 .6rem;
+  margin: 0 0 .7rem;
   color: var(--attenue);
   font-size: .8rem;
-  line-height: 1.55;
+  line-height: 1.6;
 }
-#contenu-note[hidden] { display: none !important; }
 
 .hud-ligne {
   display: flex;
@@ -144,7 +164,7 @@ button:hover { border-color: var(--ambre); color: var(--ambre-clair); }
 button:focus-visible { outline: 2px solid var(--ambre); outline-offset: 2px; }
 button[hidden] { display: none !important; }
 
-#bouton-retour { border-left: 2px solid var(--ambre); }
+#bouton-remonter { border-left: 2px solid var(--ambre); }
 
 #panneau-edition {
   right: 1rem;
@@ -196,5 +216,5 @@ button.danger:hover { border-color: #e07a7a; color: #e07a7a; }
 @media (max-width: 560px) {
   #fil-ariane { display: none; }
   #astuce { display: none; }
-  #hud { width: calc(100vw - 2rem); }
+  #panneau-note { width: calc(100vw - 2rem); max-height: 45vh; }
 }

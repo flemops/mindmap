@@ -12,15 +12,18 @@
 
 <div id="scene"></div>
 
-<div id="hud" class="panneau">
-  <div class="hud-titre">NOTE COURANTE</div>
-  <p id="titre-note" class="hud-valeur"></p>
-  <p id="contenu-note" hidden></p>
+<aside id="panneau-note" class="panneau" hidden aria-live="polite">
+  <div class="panneau-tete">
+    <span class="hud-titre">NOTE</span>
+    <button id="bouton-fermer-note" aria-label="Revenir a la vue d'ensemble">&times;</button>
+  </div>
+  <h2 id="titre-note"></h2>
+  <p id="contenu-note"></p>
   <div class="hud-ligne">
     <span id="compteur-notes" class="hud-compte"></span>
-    <button id="bouton-retour" hidden>&larr; remonter</button>
+    <button id="bouton-remonter" hidden>&larr; remonter</button>
   </div>
-</div>
+</aside>
 
 <div id="fil-ariane" class="panneau" aria-live="polite"></div>
 

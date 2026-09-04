@@ -1,50 +1,60 @@
-// Scene 3D : un globe filaire, les notes posees a sa surface. Aucune lumiere
-// n'est necessaire (materiaux "basic") -- la scene est un trace, pas un rendu
-// realiste, ce qui la garde lisible et peu couteuse.
+// Scene 3D : un seul monde continu. Les notes de premier niveau sont posees sur
+// un globe filaire ; deplier une note fait apparaitre ses filles sur une sphere
+// plus petite centree sur elle, reliees par un trait. Rien n'est jamais retire
+// de la scene lors d'une navigation -- on ne change pas de "fenetre", le monde
+// grandit autour de ce qu'on ouvre.
+//
+// Aucune lumiere : les materiaux sont "basic". La scene est un trace, pas un
+// rendu realiste, ce qui la garde lisible et peu couteuse.
 import * as THREE from '/vendor/three.module.min.js'
 
 // Direction artistique reprise de hamdy-tabsissi.com/monde. Zone volontairement
 // hors-theme : la scene reste sombre meme en `prefers-color-scheme: light`,
-// donc les couleurs sont litterales ici (meme exception que .tuile-multivers).
+// donc les couleurs sont litterales ici (meme exception que .tuile-multivers
+// du portfolio). Elles doivent rester identiques a celles de style.css.
 export const COULEURS = {
   fond: 0x08070f,
   globe: 0x26243a,
+  trait: 0x4a4570,
   note: 0xe6b450,
+  noteOuverte: 0xffdf9e,
   noteSurvol: 0xffdf9e,
   etoile: 0x6f6b85,
 }
 
 export const RAYON_GLOBE = 100
-const RAYON_NOTE = 4.5
+/** Chaque niveau tient dans une sphere nettement plus petite que son parent. */
+const FACTEUR_NIVEAU = 0.46
 
 export const scene = new THREE.Scene()
 scene.background = new THREE.Color(COULEURS.fond)
 
-export const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000)
+export const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 6000)
 
 const renderer = new THREE.WebGLRenderer({ antialias: true })
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
 
 const raycaster = new THREE.Raycaster()
+
 const globe = new THREE.Mesh(
   new THREE.SphereGeometry(RAYON_GLOBE, 24, 16),
-  new THREE.MeshBasicMaterial({ color: COULEURS.globe, wireframe: true, transparent: true, opacity: 0.35 })
+  new THREE.MeshBasicMaterial({ color: COULEURS.globe, wireframe: true, transparent: true, opacity: 0.32 })
 )
 scene.add(globe)
 
-// Sphere pleine invisible : sert de cible au raycast pour convertir un clic
-// dans le vide en coordonnees (longitude, latitude) lors d'une creation.
-const globeCible = new THREE.Mesh(
-  new THREE.SphereGeometry(RAYON_GLOBE, 24, 16),
-  new THREE.MeshBasicMaterial({ visible: false })
-)
-scene.add(globeCible)
-
 scene.add(champDEtoiles())
 
-/** Groupe recree a chaque changement de niveau : contient les notes du niveau. */
-let groupeNotes = new THREE.Group()
-scene.add(groupeNotes)
+const groupeNotes = new THREE.Group()
+const groupeTraits = new THREE.Group()
+scene.add(groupeNotes, groupeTraits)
+
+/**
+ * Tout ce que la scene connait d'une note affichee.
+ * @type {Map<number, {note: object, centre: THREE.Vector3, rayon: number,
+ *                     bille: THREE.Mesh, etiquette: THREE.Sprite,
+ *                     parentId: number|null, deplie: boolean}>}
+ */
+const noeuds = new Map()
 
 export function attacher(element) {
   element.appendChild(renderer.domElement)
@@ -52,10 +62,8 @@ export function attacher(element) {
 }
 
 export function redimensionner() {
-  const l = window.innerWidth
-  const h = window.innerHeight
-  renderer.setSize(l, h)
-  camera.aspect = l / h
+  renderer.setSize(window.innerWidth, window.innerHeight)
+  camera.aspect = window.innerWidth / window.innerHeight
   camera.updateProjectionMatrix()
 }
 
@@ -64,136 +72,187 @@ export function rendu() {
 }
 
 /**
- * Distance a laquelle le globe tient entierement dans le cadre, etiquettes
- * comprises. Calculee depuis le ratio de l'ecran : sur un telephone en
- * portrait, c'est le champ horizontal qui contraint, pas le vertical -- une
- * distance fixe y ferait sortir les notes du cadre.
+ * Distance a laquelle une sphere de rayon donne tient dans le cadre. Calculee
+ * depuis le ratio de l'ecran : en portrait c'est le champ horizontal qui
+ * contraint, une distance fixe y sortirait les notes du cadre.
  */
-export function distanceCadrage(marge = 1.6) {
+export function distanceCadrage(rayon = RAYON_GLOBE, marge = 1.7) {
   const champVertical = THREE.MathUtils.degToRad(camera.fov)
   const champHorizontal = 2 * Math.atan(Math.tan(champVertical / 2) * camera.aspect)
-  return (RAYON_GLOBE * marge) / Math.tan(Math.min(champVertical, champHorizontal) / 2)
+  return (rayon * marge) / Math.tan(Math.min(champVertical, champHorizontal) / 2)
 }
 
-/** (longitude, latitude) en degres -> point a la surface du globe. */
-export function positionSpherique(lonDeg, latDeg, rayon = RAYON_GLOBE) {
-  const phi = THREE.MathUtils.degToRad(90 - clampLat(latDeg))
+/** (longitude, latitude) en degres -> point sur une sphere donnee. */
+export function positionSpherique(lonDeg, latDeg, rayon, centre = new THREE.Vector3()) {
+  const phi = THREE.MathUtils.degToRad(90 - Math.max(-85, Math.min(85, latDeg)))
   const theta = THREE.MathUtils.degToRad(lonDeg)
   return new THREE.Vector3(
     rayon * Math.sin(phi) * Math.cos(theta),
     rayon * Math.cos(phi),
     rayon * Math.sin(phi) * Math.sin(theta)
-  )
+  ).add(centre)
 }
 
-function clampLat(lat) {
-  return Math.max(-85, Math.min(85, lat))
+/** Point sur une sphere -> (longitude, latitude) relatives a son centre. */
+export function lonLatDepuisPoint(point, centre) {
+  const p = point.clone().sub(centre).normalize()
+  return {
+    lon: THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x)),
+    lat: 90 - THREE.MathUtils.radToDeg(Math.acos(p.y)),
+  }
+}
+
+export function noeud(id) {
+  return noeuds.get(id) ?? null
+}
+
+export function estDeplie(id) {
+  return noeuds.get(id)?.deplie === true
+}
+
+export function compterEnfants(id) {
+  let total = 0
+  for (const n of noeuds.values()) if (n.parentId === id) total++
+  return total
 }
 
 /**
- * L'etiquette se pose legerement au-dessus de sa bille, jamais dessus : les
- * sprites font toujours face a la camera, un simple decalage vertical suffit
- * donc quel que soit l'angle d'orbite.
+ * Ajoute des notes autour d'un parent. `parentId === null` = premier niveau,
+ * pose sur le globe central. Les notes deja presentes ne sont pas retouchees :
+ * la scene s'enrichit, elle ne se remplace pas.
  */
-function positionEtiquette(positionBille) {
-  return positionBille.clone().multiplyScalar(1.04).add(new THREE.Vector3(0, RAYON_NOTE * 2.6, 0))
-}
-
-/** Point 3D -> (longitude, latitude) en degres, pour reecrire x/y en base. */
-export function lonLatDepuisPoint(point) {
-  const p = point.clone().normalize()
-  const lat = 90 - THREE.MathUtils.radToDeg(Math.acos(p.y))
-  const lon = THREE.MathUtils.radToDeg(Math.atan2(p.z, p.x))
-  return { lon, lat }
-}
-
-/**
- * Remplace les notes affichees. Chaque note devient une bille a la surface et
- * une etiquette texte legerement au-dessus.
- */
-export function poserNotes(notes) {
-  scene.remove(groupeNotes)
-  groupeNotes.traverse((objet) => {
-    if (objet.geometry) objet.geometry.dispose()
-    if (objet.material) {
-      if (objet.material.map) objet.material.map.dispose()
-      objet.material.dispose()
-    }
-  })
-  groupeNotes = new THREE.Group()
+export function ajouterNotes(parentId, notes) {
+  const parent = parentId === null ? null : noeuds.get(parentId)
+  const centre = parent ? parent.centre : new THREE.Vector3()
+  const rayon = parent ? parent.rayon * FACTEUR_NIVEAU : RAYON_GLOBE
 
   for (const note of notes) {
-    const position = positionSpherique(note.x, note.y)
+    if (noeuds.has(note.id)) continue
+    const position = positionSpherique(note.x, note.y, rayon, centre)
+    const rayonBille = Math.max(1.6, rayon * 0.05)
 
     const bille = new THREE.Mesh(
-      new THREE.SphereGeometry(RAYON_NOTE, 16, 12),
+      new THREE.SphereGeometry(rayonBille, 16, 12),
       new THREE.MeshBasicMaterial({ color: COULEURS.note })
     )
     bille.position.copy(position)
     bille.userData.note = note
     groupeNotes.add(bille)
 
-    const etiquette = etiquetteTexte(note.titre)
-    etiquette.position.copy(positionEtiquette(position))
+    const etiquette = etiquetteTexte(note.titre, rayon)
+    etiquette.position.copy(positionEtiquette(position, rayonBille))
     etiquette.userData.note = note
     groupeNotes.add(etiquette)
+
+    noeuds.set(note.id, { note, centre: position, rayon, bille, etiquette, parentId, deplie: false })
+
+    if (parent) groupeTraits.add(trait(parent.centre, position))
   }
 
-  scene.add(groupeNotes)
+  if (parent) parent.deplie = true
 }
 
-export function surlignerNote(id) {
-  for (const objet of groupeNotes.children) {
-    if (!objet.isMesh || !objet.userData.note) continue
-    objet.material.color.setHex(objet.userData.note.id === id ? COULEURS.noteSurvol : COULEURS.note)
-    objet.scale.setScalar(objet.userData.note.id === id ? 1.35 : 1)
+/** Marque visuellement les notes deja ouvertes. */
+export function majEtats(idSelectionne) {
+  for (const [id, n] of noeuds) {
+    const couleur = id === idSelectionne || n.deplie ? COULEURS.noteOuverte : COULEURS.note
+    n.bille.material.color.setHex(couleur)
+    n.bille.scale.setScalar(id === idSelectionne ? 1.4 : 1)
   }
 }
 
-/** Deplace une note deja affichee (glisser en mode edition). */
+export function survoler(id) {
+  for (const [autreId, n] of noeuds) {
+    if (n.deplie) continue
+    n.bille.material.color.setHex(autreId === id ? COULEURS.noteSurvol : COULEURS.note)
+  }
+}
+
+/** Deplace une note et son etiquette (glisser en mode edition). */
 export function deplacerNote(id, lon, lat) {
-  const position = positionSpherique(lon, lat)
-  for (const objet of groupeNotes.children) {
-    if (objet.userData.note?.id !== id) continue
-    if (objet.isSprite) objet.position.copy(positionEtiquette(position))
-    else objet.position.copy(position)
+  const n = noeuds.get(id)
+  if (!n) return
+  const parent = n.parentId === null ? null : noeuds.get(n.parentId)
+  const centreParent = parent ? parent.centre : new THREE.Vector3()
+  const position = positionSpherique(lon, lat, n.rayon, centreParent)
+  n.centre.copy(position)
+  n.bille.position.copy(position)
+  n.etiquette.position.copy(positionEtiquette(position, n.bille.geometry.parameters.radius))
+  redessinerTraits()
+}
+
+function redessinerTraits() {
+  groupeTraits.clear()
+  for (const n of noeuds.values()) {
+    if (n.parentId === null) continue
+    const parent = noeuds.get(n.parentId)
+    if (parent) groupeTraits.add(trait(parent.centre, n.centre))
   }
 }
 
-/** Note sous le pointeur (coordonnees ecran), ou null. */
+/** Sphere sur laquelle se placent les filles d'une note : cible du raycast. */
+export function pointSurSphereDe(parentId, sx, sy) {
+  const parent = parentId === null ? null : noeuds.get(parentId)
+  const centre = parent ? parent.centre : new THREE.Vector3()
+  const rayon = parent ? parent.rayon * FACTEUR_NIVEAU : RAYON_GLOBE
+
+  preparerRaycast(sx, sy)
+  const sphere = new THREE.Sphere(centre, rayon)
+  const point = new THREE.Vector3()
+  return raycaster.ray.intersectSphere(sphere, point) ? point : null
+}
+
 export function noteSousPointeur(sx, sy) {
   preparerRaycast(sx, sy)
   const touches = raycaster.intersectObjects(groupeNotes.children, false)
   return touches.length > 0 ? touches[0].object.userData.note : null
 }
 
-/** Point du globe sous le pointeur, ou null si le clic vise le vide. */
-export function pointGlobeSousPointeur(sx, sy) {
-  preparerRaycast(sx, sy)
-  const touches = raycaster.intersectObject(globeCible, false)
-  return touches.length > 0 ? touches[0].point : null
+export function retirerNote(id) {
+  const n = noeuds.get(id)
+  if (!n) return
+  for (const [autreId, autre] of [...noeuds]) {
+    if (autre.parentId === id) retirerNote(autreId)
+  }
+  groupeNotes.remove(n.bille, n.etiquette)
+  n.bille.geometry.dispose()
+  n.bille.material.dispose()
+  n.etiquette.material.map?.dispose()
+  n.etiquette.material.dispose()
+  noeuds.delete(id)
+  redessinerTraits()
 }
 
 function preparerRaycast(sx, sy) {
-  const pointeur = new THREE.Vector2(
-    (sx / window.innerWidth) * 2 - 1,
-    -(sy / window.innerHeight) * 2 + 1
+  raycaster.setFromCamera(
+    new THREE.Vector2((sx / window.innerWidth) * 2 - 1, -(sy / window.innerHeight) * 2 + 1),
+    camera
   )
-  raycaster.setFromCamera(pointeur, camera)
 }
 
-function etiquetteTexte(texte) {
+function positionEtiquette(position, rayonBille) {
+  return position.clone().add(new THREE.Vector3(0, rayonBille * 2.4 + 2, 0))
+}
+
+function trait(depart, arrivee) {
+  const geometrie = new THREE.BufferGeometry().setFromPoints([depart.clone(), arrivee.clone()])
+  return new THREE.Line(
+    geometrie,
+    new THREE.LineBasicMaterial({ color: COULEURS.trait, transparent: true, opacity: 0.7 })
+  )
+}
+
+function etiquetteTexte(texte, rayonNiveau) {
   const echelle = 2
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
   const police = `${13 * echelle}px ui-monospace, SFMono-Regular, Menlo, monospace`
 
   ctx.font = police
-  const largeurTexte = ctx.measureText(texte).width
-  canvas.width = Math.ceil(largeurTexte + 16 * echelle)
+  canvas.width = Math.ceil(ctx.measureText(texte).width + 16 * echelle)
   canvas.height = 24 * echelle
 
-  // La taille du canvas reinitialise le contexte : la police doit etre reposee.
+  // Redimensionner le canvas reinitialise le contexte : reposer la police.
   ctx.font = police
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
@@ -202,18 +261,23 @@ function etiquetteTexte(texte) {
 
   const texture = new THREE.CanvasTexture(canvas)
   texture.minFilter = THREE.LinearFilter
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false }))
-  sprite.scale.set(canvas.width / echelle / 3.2, canvas.height / echelle / 3.2, 1)
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false })
+  )
+  // L'etiquette suit la taille de son niveau, sinon les sous-notes deviennent
+  // illisibles ou ecrasent le niveau au-dessus.
+  const facteur = (rayonNiveau / RAYON_GLOBE) * 0.31 + 0.06
+  sprite.scale.set((canvas.width / echelle) * facteur, (canvas.height / echelle) * facteur, 1)
   return sprite
 }
 
 function champDEtoiles() {
-  const nombre = 1400
+  const nombre = 1600
   const positions = new Float32Array(nombre * 3)
   for (let i = 0; i < nombre; i++) {
-    // Distribution sur une coquille lointaine, pour un fond qui ne bouge
-    // presque pas quand on orbite -- l'effet "ciel" plutot que "confettis".
-    const rayon = 1200 + Math.random() * 900
+    // Coquille lointaine : le fond bouge peu quand on orbite, effet "ciel"
+    // plutot que "confettis".
+    const rayon = 1400 + Math.random() * 1100
     const theta = Math.random() * Math.PI * 2
     const phi = Math.acos(2 * Math.random() - 1)
     positions[i * 3] = rayon * Math.sin(phi) * Math.cos(theta)

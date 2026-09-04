@@ -26,6 +26,22 @@ export function distance() {
   return spherique.radius
 }
 
+/**
+ * Deplace progressivement la cible de la camera vers un point. `avancement`
+ * va de 0 a 1 : l'appelant pilote la courbe d'animation, on ne fait qu'appliquer.
+ */
+const cibleDepart = new THREE.Vector3()
+let cibleEnCours = false
+
+export function viserCible(point, avancement) {
+  if (!cibleEnCours) {
+    cibleDepart.copy(cible)
+    cibleEnCours = true
+  }
+  cible.lerpVectors(cibleDepart, new THREE.Vector3(point.x, point.y, point.z), avancement)
+  if (avancement >= 1) cibleEnCours = false
+}
+
 export function reglerDistance(valeur) {
   spherique.radius = THREE.MathUtils.clamp(valeur, DISTANCE_MIN, DISTANCE_MAX)
 }
