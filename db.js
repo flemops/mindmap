@@ -92,57 +92,57 @@ function seed() {
     parent_id: null,
     titre: 'Bienvenue',
     contenu:
-      "Chaque note peut contenir d'autres notes. Cliquez sur une bulle pour zoomer a l'interieur.",
-    x: 0,
-    y: 0,
+      "Chaque note est posee sur un globe et contient ses propres notes. Cliquez une note pour entrer dedans.",
+    x: 20,
+    y: 12,
   })
   const comment = createNote({
     parent_id: bienvenue.id,
     titre: 'Comment ca marche',
-    contenu: 'Un clic zoome dans une note pour voir ses notes filles. Le bouton retour remonte.',
-    x: -140,
-    y: -80,
+    contenu: 'Un clic entre dans une note et revele ses notes filles. Le bouton remonter revient au niveau precedent.',
+    x: -55,
+    y: 28,
   })
   createNote({
     parent_id: comment.id,
-    titre: 'Navigation',
-    contenu: 'Clic = zoomer. Bouton retour (ou Echap) = remonter d\'un niveau.',
-    x: -60,
-    y: -50,
+    titre: 'Naviguer',
+    contenu: 'Molette : zoom. Glisser : deplacer la vue. Alt + glisser : orbiter autour du globe.',
+    x: -30,
+    y: 20,
   })
   createNote({
     parent_id: comment.id,
     titre: 'Structure',
-    contenu: 'Chaque note a une position (x, y) relative a sa note parente.',
-    x: 90,
-    y: 40,
+    contenu: 'Chaque note porte une longitude et une latitude : sa place sur le globe de sa note parente.',
+    x: 70,
+    y: -18,
   })
   const projets = createNote({
     parent_id: bienvenue.id,
     titre: 'Projets',
     contenu: 'Une selection de projets, organises en sous-notes.',
-    x: 160,
-    y: 60,
+    x: 110,
+    y: -22,
   })
   createNote({
     parent_id: projets.id,
     titre: 'Portfolio',
     contenu: 'hamdy-tabsissi.com - Express, EJS, canvas 2D, auto-heberge.',
-    x: -100,
-    y: 60,
+    x: -40,
+    y: 30,
   })
   createNote({
     parent_id: projets.id,
     titre: 'EventMap',
-    contenu: 'Carte culturelle d\'evenements franciliens, FastAPI + Leaflet.',
-    x: 100,
-    y: -40,
+    contenu: "Carte culturelle d'evenements franciliens, FastAPI + Leaflet.",
+    x: 60,
+    y: -30,
   })
   createNote({
     parent_id: bienvenue.id,
     titre: 'A propos',
-    contenu: 'Cette mindmap est elle-meme une piece de portfolio : canvas vanilla JS, sans librairie tierce.',
-    x: -20,
-    y: 170,
+    contenu: 'Cette mindmap est une piece de portfolio : Three.js, sans librairie de mind-map.',
+    x: -150,
+    y: -35,
   })
 }

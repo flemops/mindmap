@@ -1,256 +1,201 @@
 import {
-  dessinerScene,
-  lireJetonsCouleur,
-  ecranVersMonde,
-  trouverNoteSousPointeur,
-  rayonNote,
-} from './canvas-renderer.js'
+  attacher,
+  redimensionner,
+  distanceCadrage,
+  rendu,
+  poserNotes,
+  surlignerNote,
+  deplacerNote,
+  noteSousPointeur,
+  pointGlobeSousPointeur,
+  lonLatDepuisPoint,
+} from './scene.js'
+import { brancherControles, appliquerCamera, distance, reglerDistance, cible } from './controls.js'
 
 const enEdition = location.pathname.startsWith('/edit')
 
-const canvas = document.getElementById('canvas')
-const ctx = canvas.getContext('2d')
+const conteneur = document.getElementById('scene')
 const boutonRetour = document.getElementById('bouton-retour')
 const filAriane = document.getElementById('fil-ariane')
-const astuce = document.getElementById('astuce-edition')
 const contenuNote = document.getElementById('contenu-note')
+const titreNote = document.getElementById('titre-note')
+const compteur = document.getElementById('compteur-notes')
+const astuce = document.getElementById('astuce')
 const panneau = document.getElementById('panneau-edition')
 const champTitre = document.getElementById('champ-titre')
 const champContenu = document.getElementById('champ-contenu')
 const boutonSupprimer = document.getElementById('bouton-supprimer')
 const boutonAnnuler = document.getElementById('bouton-annuler')
 
-if (enEdition) astuce.hidden = false
-
-/** @type {{id:number|null, titre:string}[]} */
-let pile = [] // ancetres, du plus lointain au plus proche (le dernier = parent direct)
+/** @type {{id: number|null, titre: string}[]} ancetres, du plus lointain au plus proche */
+let pile = []
 let focusId = null
 let focusTitre = 'Racine'
 let enfants = []
-let survole = null
-let editionNoteId = null // id en cours d'edition dans le panneau, ou 'nouveau'
-let notePositionNouvelle = null
+let noteEnDeplacement = null
+let editionNoteId = null
+let positionNouvelleNote = null
 
-let transform = { scale: 1, tx: 0, ty: 0 }
-let animation = null // {debut, duree, depart, arrivee, apresAnimation}
+// Fondu applique au changement de niveau : la scene reapparait en douceur.
 let opacite = 1
-let couleurs = lireJetonsCouleur()
 
-function redimensionner() {
-  canvas.width = window.innerWidth * devicePixelRatio
-  canvas.height = window.innerHeight * devicePixelRatio
-  canvas.style.width = window.innerWidth + 'px'
-  canvas.style.height = window.innerHeight + 'px'
-  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
-}
-window.addEventListener('resize', redimensionner)
-redimensionner()
-
-matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-  couleurs = lireJetonsCouleur()
+attacher(conteneur)
+reglerDistance(distanceCadrage())
+appliquerCamera()
+window.addEventListener('resize', () => {
+  redimensionner()
+  // Le cadrage depend du ratio : il doit etre recalcule a chaque changement
+  // de taille, sinon une rotation de telephone sort les notes du cadre.
+  reglerDistance(distanceCadrage())
+  appliquerCamera()
 })
+if (enEdition) astuce.hidden = false
 
-function largeurAffichage() { return window.innerWidth }
-function hauteurAffichage() { return window.innerHeight }
-
-// --- Chargement des donnees -------------------------------------------
+// --- Donnees -------------------------------------------------------------
 
 async function chargerNote(id) {
-  const url = id === null ? '/api/notes/root' : `/api/notes/${id}`
-  const rep = await fetch(url)
+  const rep = await fetch(id === null ? '/api/notes/root' : `/api/notes/${id}`)
   if (!rep.ok) throw new Error(`chargement note ${id} : ${rep.status}`)
   return rep.json()
 }
 
-async function allerA(id, titre, { animer = true, poussePile = null } = {}) {
+async function allerA(id, { poussePile = null } = {}) {
   if (poussePile !== null) pile.push(poussePile)
   const { note, children } = await chargerNote(id)
   focusId = id
   focusTitre = note.titre
   enfants = children
-  transform = { scale: 1, tx: 0, ty: 0 }
-  metAJourFilAriane()
+  poserNotes(children)
+  cible.set(0, 0, 0)
+  reglerDistance(distanceCadrage())
+  appliquerCamera()
+  majHud(note)
+  opacite = 0
+}
+
+function majHud(note) {
+  boutonRetour.hidden = pile.length === 0
+  titreNote.textContent = note.titre
   contenuNote.textContent = note.contenu
   contenuNote.hidden = !note.contenu
-  if (animer) {
-    opacite = 0
-    animerVers({ scale: 1, tx: 0, ty: 0 }, 180, () => { opacite = 1 })
+  compteur.textContent = `${enfants.length} note${enfants.length > 1 ? 's' : ''}`
+  filAriane.textContent = [...pile.map((p) => p.titre), focusTitre].join(' / ')
+}
+
+// --- Boucle de rendu -----------------------------------------------------
+
+function boucle() {
+  if (opacite < 1) {
+    opacite = Math.min(1, opacite + 0.06)
+    conteneur.style.opacity = opacite
   }
-}
-
-function metAJourFilAriane() {
-  boutonRetour.hidden = pile.length === 0
-  const chemin = [...pile.map((p) => p.titre), focusTitre]
-  filAriane.innerHTML = chemin
-    .map((t, i) => (i === chemin.length - 1 ? `<strong>${escapeHtml(t)}</strong>` : escapeHtml(t)))
-    .join(' / ')
-}
-
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
-}
-
-// --- Animation de la camera (zoom fractal) ------------------------------
-
-function animerVers(cible, duree, apres) {
-  animation = { debut: performance.now(), duree, depart: { ...transform }, cible, apres }
-}
-
-function easeOutQuint(t) { return 1 - Math.pow(1 - t, 5) }
-
-function boucle(t) {
-  if (animation) {
-    const progres = Math.min(1, (t - animation.debut) / animation.duree)
-    const e = easeOutQuint(progres)
-    transform = {
-      scale: animation.depart.scale + (animation.cible.scale - animation.depart.scale) * e,
-      tx: animation.depart.tx + (animation.cible.tx - animation.depart.tx) * e,
-      ty: animation.depart.ty + (animation.cible.ty - animation.depart.ty) * e,
-    }
-    if (progres >= 1) {
-      const apres = animation.apres
-      animation = null
-      if (apres) apres()
-    }
-  }
-  if (opacite < 1) opacite = Math.min(1, opacite + 0.08)
-
-  dessinerScene(ctx, {
-    largeur: largeurAffichage(),
-    hauteur: hauteurAffichage(),
-    enfants,
-    transform,
-    couleurs,
-    survole,
-    opacite,
-  })
+  rendu()
   requestAnimationFrame(boucle)
 }
 requestAnimationFrame(boucle)
 
-// --- Navigation : zoomer dans une note / remonter -----------------------
+// --- Navigation fractale -------------------------------------------------
+
+let enTransition = false
 
 async function zoomerDans(note) {
-  const facteurCible = Math.min(largeurAffichage(), hauteurAffichage()) / (rayonNote(note.titre) * 2.2)
-  animerVers({ scale: facteurCible, tx: -note.x, ty: -note.y }, 420, async () => {
-    await allerA(note.id, note.titre, { poussePile: { id: focusId, titre: focusTitre } })
+  if (enTransition) return
+  enTransition = true
+
+  // On plonge vers la note avant de basculer de niveau : c'est ce mouvement
+  // qui donne le sentiment d'entrer *dans* la note plutot que de changer d'ecran.
+  const depart = distance()
+  const debut = performance.now()
+  const duree = 420
+
+  await new Promise((resoudre) => {
+    const avancer = (t) => {
+      const p = Math.min(1, (t - debut) / duree)
+      const e = 1 - Math.pow(1 - p, 4)
+      reglerDistance(depart + (depart * 0.42 - depart) * e)
+      appliquerCamera()
+      if (p < 1) requestAnimationFrame(avancer)
+      else resoudre()
+    }
+    requestAnimationFrame(avancer)
   })
+
+  await allerA(note.id, { poussePile: { id: focusId, titre: focusTitre } })
+  enTransition = false
 }
 
 async function remonter() {
-  if (pile.length === 0) return
+  if (pile.length === 0 || enTransition) return
+  enTransition = true
   const parent = pile.pop()
-  animerVers({ scale: 0.35, tx: transform.tx, ty: transform.ty }, 260, async () => {
-    await allerA(parent.id, parent.titre, { animer: true })
-  })
+  await allerA(parent.id)
+  enTransition = false
 }
 
 boutonRetour.addEventListener('click', remonter)
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') remonter()
+  if (e.key === 'Escape' && panneau.hidden) remonter()
 })
 
-// --- Pointeur : clic pour zoomer, glisser pour deplacer (edition) -------
+// --- Gestes --------------------------------------------------------------
 
-let pointeurDepart = null
-let deplaceId = null
+brancherControles(conteneur, {
+  estGlisserNote: (sx, sy) => {
+    if (!enEdition) return false
+    const note = noteSousPointeur(sx, sy)
+    noteEnDeplacement = note ?? null
+    return note !== null
+  },
 
-canvas.addEventListener('pointerdown', (e) => {
-  // Seul le bouton principal navigue : le clic droit sert a editer et emet
-  // lui aussi une paire pointerdown/pointerup, qui declencherait un zoom.
-  if (e.button !== 0) return
-  const rect = canvas.getBoundingClientRect()
-  const sx = e.clientX - rect.left
-  const sy = e.clientY - rect.top
-  pointeurDepart = { sx, sy, temps: performance.now() }
+  surGlisserNote: (sx, sy) => {
+    if (!noteEnDeplacement) return
+    const point = pointGlobeSousPointeur(sx, sy)
+    if (!point) return
+    const { lon, lat } = lonLatDepuisPoint(point)
+    noteEnDeplacement.x = lon
+    noteEnDeplacement.y = lat
+    deplacerNote(noteEnDeplacement.id, lon, lat)
+  },
 
-  if (enEdition) {
-    const note = trouverNoteSousPointeur(sx, sy, enfants, transform, largeurAffichage(), hauteurAffichage())
-    if (note) {
-      deplaceId = note.id
-      canvas.classList.add('dragging')
-      canvas.setPointerCapture(e.pointerId)
-    }
-  }
-})
-
-canvas.addEventListener('pointermove', (e) => {
-  const rect = canvas.getBoundingClientRect()
-  const sx = e.clientX - rect.left
-  const sy = e.clientY - rect.top
-
-  if (deplaceId !== null) {
-    const monde = ecranVersMonde(sx, sy, transform, largeurAffichage(), hauteurAffichage())
-    const n = enfants.find((n) => n.id === deplaceId)
-    if (n) { n.x = monde.x; n.y = monde.y }
-    return
-  }
-
-  const survolNote = trouverNoteSousPointeur(sx, sy, enfants, transform, largeurAffichage(), hauteurAffichage())
-  const nouveauSurvole = survolNote ? survolNote.id : null
-  if (nouveauSurvole !== survole) {
-    survole = nouveauSurvole
-    canvas.style.cursor = survole !== null ? 'pointer' : 'grab'
-  }
-})
-
-canvas.addEventListener('pointerup', async (e) => {
-  if (e.button !== 0) return
-  canvas.classList.remove('dragging')
-  const rect = canvas.getBoundingClientRect()
-  const sx = e.clientX - rect.left
-  const sy = e.clientY - rect.top
-  const aBouge = pointeurDepart && Math.hypot(sx - pointeurDepart.sx, sy - pointeurDepart.sy) > 6
-
-  // En edition, un appui sur une bulle arme le glisser. S'il n'y a pas eu de
-  // mouvement, c'est un clic : il doit zoomer comme en lecture seule, sinon
-  // la navigation devient impossible des qu'on est sur /edit.
-  if (deplaceId !== null) {
-    const id = deplaceId
-    deplaceId = null
-    pointeurDepart = null
-    const n = enfants.find((n) => n.id === id)
-    if (aBouge) {
-      if (n) await appelApi('PATCH', `/api/write/notes/${id}/position`, { x: n.x, y: n.y })
-    } else if (n) {
-      await zoomerDans(n)
-    }
-    return
-  }
-
-  if (!aBouge) {
-    const note = trouverNoteSousPointeur(sx, sy, enfants, transform, largeurAffichage(), hauteurAffichage())
-    if (note) await zoomerDans(note)
-  }
-  pointeurDepart = null
-})
-
-// --- Edition : double-clic sur une note ou sur le vide -------------------
-
-// Le clic simple garde le meme sens qu'en lecture seule (ouvrir la note) :
-// editer passe donc par le clic droit, et non par un double-clic -- un
-// double-clic aurait declenche le zoom du premier clic avant d'arriver.
-if (enEdition) {
-  canvas.addEventListener('contextmenu', (e) => {
-    const rect = canvas.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
-    const note = trouverNoteSousPointeur(sx, sy, enfants, transform, largeurAffichage(), hauteurAffichage())
+  surFinGlisserNote: async (aBouge) => {
+    const note = noteEnDeplacement
+    noteEnDeplacement = null
     if (!note) return
-    e.preventDefault()
-    ouvrirPanneau(note)
-  })
+    if (aBouge) {
+      await appelApi('PATCH', `/api/write/notes/${note.id}/position`, { x: note.x, y: note.y })
+    } else {
+      await zoomerDans(note)
+    }
+  },
 
-  // Le vide ne reagit pas au clic simple : le double-clic y est sans ambiguite.
-  canvas.addEventListener('dblclick', (e) => {
-    const rect = canvas.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
-    if (trouverNoteSousPointeur(sx, sy, enfants, transform, largeurAffichage(), hauteurAffichage())) return
-    notePositionNouvelle = ecranVersMonde(sx, sy, transform, largeurAffichage(), hauteurAffichage())
+  surClic: async (sx, sy) => {
+    const note = noteSousPointeur(sx, sy)
+    if (note) await zoomerDans(note)
+  },
+
+  surSurvol: (sx, sy) => {
+    const note = noteSousPointeur(sx, sy)
+    surlignerNote(note ? note.id : null)
+    conteneur.style.cursor = note ? 'pointer' : 'grab'
+  },
+
+  surClicDroit: (sx, sy) => {
+    if (!enEdition) return
+    const note = noteSousPointeur(sx, sy)
+    if (note) ouvrirPanneau(note)
+  },
+
+  surDoubleClicVide: (sx, sy) => {
+    if (!enEdition) return
+    if (noteSousPointeur(sx, sy)) return
+    const point = pointGlobeSousPointeur(sx, sy)
+    if (!point) return
+    positionNouvelleNote = lonLatDepuisPoint(point)
     ouvrirPanneau(null)
-  })
-}
+  },
+})
+
+// --- Panneau d'edition ---------------------------------------------------
 
 function ouvrirPanneau(note) {
   editionNoteId = note ? note.id : null
@@ -264,7 +209,7 @@ function ouvrirPanneau(note) {
 function fermerPanneau() {
   panneau.hidden = true
   editionNoteId = null
-  notePositionNouvelle = null
+  positionNouvelleNote = null
 }
 
 boutonAnnuler.addEventListener('click', fermerPanneau)
@@ -272,23 +217,23 @@ boutonAnnuler.addEventListener('click', fermerPanneau)
 panneau.addEventListener('submit', async (e) => {
   e.preventDefault()
   const titre = champTitre.value.trim()
-  const contenu = champContenu.value
   if (!titre) return
+  const contenu = champContenu.value
 
   if (editionNoteId !== null) {
     await appelApi('PUT', `/api/write/notes/${editionNoteId}`, { titre, contenu })
   } else {
-    const pos = notePositionNouvelle ?? { x: 0, y: 0 }
+    const pos = positionNouvelleNote ?? { lon: 0, lat: 0 }
     await appelApi('POST', '/api/write/notes', {
       parent_id: focusId,
       titre,
       contenu,
-      x: pos.x,
-      y: pos.y,
+      x: pos.lon,
+      y: pos.lat,
     })
   }
   fermerPanneau()
-  await allerA(focusId, focusTitre, { animer: false })
+  await rafraichirNiveau()
 })
 
 boutonSupprimer.addEventListener('click', async () => {
@@ -296,8 +241,16 @@ boutonSupprimer.addEventListener('click', async () => {
   if (!confirm('Supprimer cette note et toutes ses notes filles ?')) return
   await appelApi('DELETE', `/api/write/notes/${editionNoteId}`)
   fermerPanneau()
-  await allerA(focusId, focusTitre, { animer: false })
+  await rafraichirNiveau()
 })
+
+/** Recharge le niveau courant sans rejouer l'animation d'entree. */
+async function rafraichirNiveau() {
+  const { note, children } = await chargerNote(focusId)
+  enfants = children
+  poserNotes(children)
+  majHud(note)
+}
 
 async function appelApi(methode, url, corps) {
   const rep = await fetch(url, {
@@ -306,8 +259,8 @@ async function appelApi(methode, url, corps) {
     body: corps ? JSON.stringify(corps) : undefined,
   })
   if (!rep.ok) {
-    // Une session Access expiree renverrait ici une redirection/401 : le
-    // rechargement de la page relance le flux de login Cloudflare.
+    // Une session Access expiree se traduit ici par un 401/403 : recharger
+    // relance le flux de connexion Cloudflare.
     if (rep.status === 401 || rep.status === 403) location.reload()
     throw new Error(`${methode} ${url} : ${rep.status}`)
   }
@@ -316,4 +269,4 @@ async function appelApi(methode, url, corps) {
 
 // --- Depart --------------------------------------------------------------
 
-allerA(null, 'Racine', { animer: false })
+allerA(null)

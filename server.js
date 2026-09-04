@@ -114,6 +114,16 @@ app.delete('/api/write/notes/:id', (req, res) => {
 // qu'un correctif n'a pas pris.
 app.use('/static', express.static(join(__dirname, 'public'), { maxAge: 0, etag: true }))
 
+// Three.js est servi depuis node_modules plutot que recopie dans le depot :
+// la version reste pilotee par package-lock.json, et rien n'est charge depuis
+// un CDN -- la CSP `script-src 'self'` l'interdit de toute facon.
+// `three.module.min.js` importe `./three.core.min.js` : les deux vivent dans
+// ce meme dossier, ce montage suffit donc.
+app.use(
+  '/vendor',
+  express.static(join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d', immutable: true })
+)
+
 app.get('/edit', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'index.html'))
 })

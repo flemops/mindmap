@@ -1,199 +1,200 @@
-:root {
-  --bg: #0f1115;
-  --surface: #171a21;
-  --border: #2a2f3a;
-  --text: #ece9e2;
-  --text-muted: #9c9ba6;
-  --accent: #e6b450;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
-  --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-}
+/* Direction artistique reprise de hamdy-tabsissi.com/monde : fond spatial,
+   monospace, ambre, panneaux type HUD.
 
-@media (prefers-color-scheme: light) {
-  :root {
-    --bg: #faf8f3;
-    --surface: #ffffff;
-    --border: #e2ddd2;
-    --text: #1b1a17;
-    --text-muted: #6a6972;
-    --accent: #96650a;
-  }
+   Zone volontairement HORS-THEME (meme exception que .tuile-multivers du
+   portfolio) : c'est une scene spatiale, elle reste sombre y compris en
+   `prefers-color-scheme: light`. Les couleurs sont donc litterales ici --
+   y appliquer des jetons de theme clair produirait du presque-noir sur du
+   presque-noir. Ces valeurs doivent rester identiques a COULEURS dans
+   scene.js, sinon le fond HTML et le fond WebGL divergent. */
+
+:root {
+  --fond: #08070f;
+  --texte: #cfcbe0;
+  --attenue: #8d89a3;
+  --discret: #6f6b85;
+  --ambre: #e6b450;
+  --ambre-clair: #ffdf9e;
+  --panneau: rgba(13, 13, 20, .78);
+  --trait: #26243a;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
-
-/* Le h1 porte le referencement et les lecteurs d'ecran, il ne doit jamais
-   etre `hidden` : on le sort du champ visuel sans le retirer de l'arbre.
-   En classe et non en attribut `style` : la CSP interdit le style inline. */
-.hors-ecran {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
 
 html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--display);
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--mono);
+  font-size: 14px;
 }
 
-body {
-  display: flex;
-  flex-direction: column;
+/* Le h1 porte le referencement et les lecteurs d'ecran : on le sort du champ
+   visuel sans le retirer de l'arbre. En classe et non en attribut `style` :
+   la CSP (`style-src 'self'`) interdit le style inline. */
+.hors-ecran {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-#canvas {
-  flex: 1;
-  display: block;
-  touch-action: none;
-  cursor: grab;
-}
-#canvas.dragging { cursor: grabbing; }
-
-/* Fil d'ariane + retour : bande fixe en haut, jamais masque de contenu principal */
-#barre {
+#scene {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  inset: 0;
+  cursor: grab;
+  transition: opacity .25s ease;
+}
+#scene canvas { display: block; }
+
+.panneau {
+  position: fixed;
+  background: var(--panneau);
+  border: 1px solid var(--trait);
+  border-radius: 10px;
+  padding: .75rem .85rem;
   backdrop-filter: blur(6px);
-  border-bottom: 1px solid var(--border);
   z-index: 10;
-  font-size: 0.9rem;
 }
 
-#bouton-retour {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  padding: 0 0.9rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  font-family: var(--display);
-  font-size: 0.9rem;
-  cursor: pointer;
+.hud-titre {
+  color: var(--ambre);
+  letter-spacing: .14em;
+  font-size: .68rem;
+  margin-bottom: .55rem;
 }
-#bouton-retour:hover { border-color: var(--accent); }
-#bouton-retour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-#bouton-retour[hidden] { display: none !important; }
+
+#hud {
+  top: 1rem;
+  left: 1rem;
+  width: min(320px, calc(100vw - 2rem));
+}
+
+.hud-valeur {
+  margin: 0 0 .4rem;
+  color: var(--texte);
+  font-size: .95rem;
+}
+
+#contenu-note {
+  margin: 0 0 .6rem;
+  color: var(--attenue);
+  font-size: .8rem;
+  line-height: 1.55;
+}
+#contenu-note[hidden] { display: none !important; }
+
+.hud-ligne {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  border-top: 1px solid #211f33;
+  padding-top: .55rem;
+}
+
+.hud-compte {
+  color: var(--discret);
+  font-size: .72rem;
+  letter-spacing: .06em;
+}
 
 #fil-ariane {
-  color: var(--text-muted);
-  font-family: var(--mono);
-  font-size: 0.8rem;
+  top: 1rem;
+  right: 1rem;
+  max-width: min(46ch, calc(100vw - 2rem));
+  color: var(--attenue);
+  font-size: .72rem;
+  letter-spacing: .06em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#fil-ariane strong {
-  color: var(--text);
-  font-family: var(--display);
-  font-weight: 600;
-}
-
-/* Texte de la note ou l'on se trouve : c'est le "corps de page" du niveau
-   courant, les bulles filles flottant dedans. Texte reel (selectionnable,
-   lu par les lecteurs d'ecran), pas dessine dans le canvas. */
-#contenu-note {
-  position: fixed;
-  top: 4.25rem;
+#astuce {
   left: 1rem;
-  max-width: 42ch;
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  z-index: 5;
-  pointer-events: none;
+  bottom: 1rem;
+  color: var(--discret);
+  font-size: .68rem;
+  line-height: 1.7;
+  letter-spacing: .04em;
 }
-#contenu-note[hidden] { display: none !important; }
+#astuce[hidden] { display: none !important; }
 
-/* Panneau d'edition (uniquement sur /edit) */
+button {
+  min-height: 44px;
+  padding: 0 .85rem;
+  background: none;
+  border: 1px solid var(--trait);
+  border-radius: 6px;
+  color: var(--texte);
+  font-family: var(--mono);
+  font-size: .78rem;
+  letter-spacing: .06em;
+  cursor: pointer;
+  transition: border-color .2s ease, color .2s ease;
+}
+button:hover { border-color: var(--ambre); color: var(--ambre-clair); }
+button:focus-visible { outline: 2px solid var(--ambre); outline-offset: 2px; }
+button[hidden] { display: none !important; }
+
+#bouton-retour { border-left: 2px solid var(--ambre); }
+
 #panneau-edition {
-  position: fixed;
   right: 1rem;
   bottom: 1rem;
   width: min(360px, calc(100vw - 2rem));
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: .6rem;
   z-index: 20;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
 }
 #panneau-edition[hidden] { display: none !important; }
 
 #panneau-edition input,
 #panneau-edition textarea {
   width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--display);
-  padding: 0.5rem;
   min-height: 44px;
+  padding: .5rem;
+  background: rgba(8, 7, 15, .85);
+  border: 1px solid var(--trait);
+  border-radius: 6px;
+  color: var(--texte);
+  font-family: var(--mono);
+  font-size: .82rem;
 }
-#panneau-edition textarea { min-height: 100px; resize: vertical; font-family: var(--mono); font-size: 0.85rem; }
+#panneau-edition textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
 #panneau-edition input:focus-visible,
-#panneau-edition textarea:focus-visible,
-#panneau-edition button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#panneau-edition textarea:focus-visible { outline: 2px solid var(--ambre); outline-offset: 1px; }
 
-#panneau-edition .rangee-boutons {
+.rangee-boutons {
   display: flex;
-  gap: 0.5rem;
+  gap: .5rem;
   justify-content: space-between;
 }
 
-#panneau-edition button {
-  min-height: 44px;
-  padding: 0 1rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--display);
-  cursor: pointer;
+button.principal {
+  background: var(--ambre);
+  border-color: var(--ambre);
+  color: #0d0d14;
+  font-weight: 600;
 }
-#panneau-edition button.principal { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
-#panneau-edition button.danger { color: #d94f4f; border-color: #d94f4f; }
-
-#astuce-edition {
-  position: fixed;
-  left: 1rem;
-  bottom: 1rem;
-  color: var(--text-muted);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  z-index: 5;
-  pointer-events: none;
-}
+button.principal:hover { background: var(--ambre-clair); border-color: var(--ambre-clair); color: #0d0d14; }
+button.danger { color: #e07a7a; border-color: #4a2b2b; }
+button.danger:hover { border-color: #e07a7a; color: #e07a7a; }
 
 @media (prefers-reduced-motion: reduce) {
-  #canvas { scroll-behavior: auto; }
+  #scene { transition: none; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   #fil-ariane { display: none; }
-  #astuce-edition { display: none; }
+  #astuce { display: none; }
+  #hud { width: calc(100vw - 2rem); }
 }
