@@ -20,8 +20,9 @@ const PORT = process.env.PORT || 3020
 
 const app = express()
 app.disable('x-powered-by')
-app.use(express.json({ limit: '256kb' }))
 
+// Les en-tetes de securite sont poses en PREMIER : montes plus bas, ils
+// manqueraient aux reponses d'erreur emises avant le routage.
 app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -32,6 +33,15 @@ app.use((req, res, next) => {
   )
   next()
 })
+
+// Le parseur JSON est monte UNIQUEMENT sur le prefixe d'ecriture, jamais
+// globalement. Monte en `app.use(...)` global, il s'executait avant le routage
+// sur n'importe quel chemin : un visiteur non authentifie pouvait, depuis une
+// route publique, declencher une erreur de parsing dont le message recopie le
+// debut de son propre corps de requete -- donc ecrire dans le journal systeme
+// a volonte, et y forger des lignes. Aucun chemin public n'a besoin de lire un
+// corps JSON : restreindre le parseur supprime le vecteur a la racine.
+app.use('/api/write', express.json({ limit: '256kb' }))
 
 // --- Lecture : publique, toujours ------------------------------------------
 
@@ -134,6 +144,21 @@ app.get('/', (req, res) => {
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' })
+})
+
+// Gestionnaire d'erreur applicatif. Sans lui, Express passe la main a
+// finalhandler, qui journalise `err.stack` -- et le message d'une erreur de
+// parsing JSON contient le debut du corps envoye par le client, retours a la
+// ligne compris. On ne journalise donc QUE des champs que le serveur maitrise,
+// et on ne renvoie ni pile ni message d'origine. Cette protection ne depend pas
+// de NODE_ENV : elle tient meme si l'unite systemd perd sa variable un jour.
+app.use((err, req, res, next) => {
+  const statut = Number.isInteger(err?.status) ? err.status : 500
+  console.error(
+    JSON.stringify({ evenement: 'erreur_requete', methode: req.method, chemin: req.path, statut, type: err?.type ?? err?.name ?? 'inconnu' })
+  )
+  if (res.headersSent) return next(err)
+  res.status(statut).json({ error: statut === 400 ? 'requete invalide' : 'erreur serveur' })
 })
 
 app.listen(PORT, '127.0.0.1', () => {

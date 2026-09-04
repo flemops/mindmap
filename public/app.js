@@ -111,28 +111,39 @@ function cadrerSur(centre, rayon, duree = 620) {
 async function ouvrirNote(note) {
   if (enTransition) return
   enTransition = true
+  // `finally` obligatoire : sans lui, un seul chargement en echec (note
+  // supprimee entre-temps, coupure reseau) laissait `enTransition` a true pour
+  // toujours -- plus aucune note ne s'ouvrait et le bouton remonter restait
+  // inerte jusqu'a un rechargement manuel.
+  try {
+    if (!estDeplie(note.id)) {
+      const { children } = await chargerNote(note.id)
+      ajouterNotes(note.id, children)
+    }
 
-  if (!estDeplie(note.id)) {
-    const { children } = await chargerNote(note.id)
-    ajouterNotes(note.id, children)
+    selectionId = note.id
+    const n = noeud(note.id)
+    majEtats(selectionId)
+    majPanneau(note)
+    await cadrerSur(n.centre, n.rayon * 0.62)
+  } catch (erreur) {
+    signalerErreur("Cette note n'a pas pu etre ouverte.", erreur)
+  } finally {
+    enTransition = false
   }
-
-  selectionId = note.id
-  const n = noeud(note.id)
-  majEtats(selectionId)
-  majPanneau(note)
-  await cadrerSur(n.centre, n.rayon * 0.62)
-  enTransition = false
 }
 
 async function revenirALaRacine() {
   if (enTransition) return
   enTransition = true
-  selectionId = null
-  majEtats(null)
-  fermerPanneauNote()
-  await cadrerSur({ x: 0, y: 0, z: 0 }, RAYON_GLOBE)
-  enTransition = false
+  try {
+    selectionId = null
+    majEtats(null)
+    fermerPanneauNote()
+    await cadrerSur({ x: 0, y: 0, z: 0 }, RAYON_GLOBE)
+  } finally {
+    enTransition = false
+  }
 }
 
 async function remonterDUnNiveau() {
@@ -164,6 +175,16 @@ function cheminDe(id) {
     courant = courant.parentId === null ? null : noeud(courant.parentId)
   }
   return ['Racine', ...chemin]
+}
+
+/** Un echec doit se voir : sinon la page reste noire ou inerte sans explication. */
+function signalerErreur(message, erreur) {
+  console.error(message, erreur)
+  titreNote.textContent = 'Erreur'
+  contenuNote.textContent = `${message} Rechargez la page pour reessayer.`
+  compteur.textContent = ''
+  panneauNote.hidden = false
+  boutonRemonter.hidden = true
 }
 
 function fermerPanneauNote() {
@@ -299,7 +320,11 @@ boutonSupprimer.addEventListener('click', async () => {
 
 // --- Depart --------------------------------------------------------------
 
-const { children } = await chargerNote(null)
-ajouterNotes(null, children)
-majEtats(null)
-filAriane.textContent = 'Racine'
+try {
+  const { children } = await chargerNote(null)
+  ajouterNotes(null, children)
+  majEtats(null)
+  filAriane.textContent = 'Racine'
+} catch (erreur) {
+  signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
+}
