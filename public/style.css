@@ -1,0 +1,199 @@
+:root {
+  --bg: #0f1115;
+  --surface: #171a21;
+  --border: #2a2f3a;
+  --text: #ece9e2;
+  --text-muted: #9c9ba6;
+  --accent: #e6b450;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #faf8f3;
+    --surface: #ffffff;
+    --border: #e2ddd2;
+    --text: #1b1a17;
+    --text-muted: #6a6972;
+    --accent: #96650a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* Le h1 porte le referencement et les lecteurs d'ecran, il ne doit jamais
+   etre `hidden` : on le sort du champ visuel sans le retirer de l'arbre.
+   En classe et non en attribut `style` : la CSP interdit le style inline. */
+.hors-ecran {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--display);
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+#canvas {
+  flex: 1;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
+#canvas.dragging { cursor: grabbing; }
+
+/* Fil d'ariane + retour : bande fixe en haut, jamais masque de contenu principal */
+#barre {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--border);
+  z-index: 10;
+  font-size: 0.9rem;
+}
+
+#bouton-retour {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--display);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+#bouton-retour:hover { border-color: var(--accent); }
+#bouton-retour:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#bouton-retour[hidden] { display: none !important; }
+
+#fil-ariane {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#fil-ariane strong {
+  color: var(--text);
+  font-family: var(--display);
+  font-weight: 600;
+}
+
+/* Texte de la note ou l'on se trouve : c'est le "corps de page" du niveau
+   courant, les bulles filles flottant dedans. Texte reel (selectionnable,
+   lu par les lecteurs d'ecran), pas dessine dans le canvas. */
+#contenu-note {
+  position: fixed;
+  top: 4.25rem;
+  left: 1rem;
+  max-width: 42ch;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  z-index: 5;
+  pointer-events: none;
+}
+#contenu-note[hidden] { display: none !important; }
+
+/* Panneau d'edition (uniquement sur /edit) */
+#panneau-edition {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(360px, calc(100vw - 2rem));
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  z-index: 20;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+#panneau-edition[hidden] { display: none !important; }
+
+#panneau-edition input,
+#panneau-edition textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--display);
+  padding: 0.5rem;
+  min-height: 44px;
+}
+#panneau-edition textarea { min-height: 100px; resize: vertical; font-family: var(--mono); font-size: 0.85rem; }
+#panneau-edition input:focus-visible,
+#panneau-edition textarea:focus-visible,
+#panneau-edition button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+#panneau-edition .rangee-boutons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+#panneau-edition button {
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--display);
+  cursor: pointer;
+}
+#panneau-edition button.principal { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+#panneau-edition button.danger { color: #d94f4f; border-color: #d94f4f; }
+
+#astuce-edition {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  z-index: 5;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #canvas { scroll-behavior: auto; }
+}
+
+@media (max-width: 480px) {
+  #fil-ariane { display: none; }
+  #astuce-edition { display: none; }
+}

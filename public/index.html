@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mindmap</title>
+<meta name="description" content="Mindmap fractale a navigation spatiale : chaque note contient ses propres notes.">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<h1 class="hors-ecran">Mindmap</h1>
+
+<div id="barre">
+  <button id="bouton-retour" hidden aria-label="Remonter a la note parente">&larr; Retour</button>
+  <div id="fil-ariane" aria-live="polite"></div>
+</div>
+
+<p id="contenu-note" hidden></p>
+
+<canvas id="canvas" role="img" aria-label="Carte des notes, cliquer une bulle pour l'ouvrir"></canvas>
+
+<div id="astuce-edition" hidden>Clic : ouvrir &middot; clic droit : editer &middot; double-clic dans le vide : creer &middot; glisser : deplacer</div>
+
+<form id="panneau-edition" hidden>
+  <input id="champ-titre" type="text" placeholder="Titre" required maxlength="120">
+  <textarea id="champ-contenu" placeholder="Contenu"></textarea>
+  <div class="rangee-boutons">
+    <button type="button" id="bouton-supprimer" class="danger">Supprimer</button>
+    <button type="button" id="bouton-annuler">Annuler</button>
+    <button type="submit" class="principal">Enregistrer</button>
+  </div>
+</form>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

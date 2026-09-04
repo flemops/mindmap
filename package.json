@@ -1,0 +1,16 @@
+{
+  "name": "mindmap",
+  "version": "1.0.0",
+  "description": "Mindmap fractale a navigation spatiale - piece de portfolio",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
