@@ -98,12 +98,18 @@ test('/edit sert la page (Access la protège en amont, pas ce serveur)', async (
   assert.equal(r.status, 200);
 });
 
-test('/api/notes/root répond avec la racine virtuelle et ses enfants', async () => {
+test('/api/notes/root répond avec la note de bienvenue du seed initial', async () => {
+  // Une base neuve (MINDMAP_DB_PATH inexistant) déclenche seed() dans db.js :
+  // exactement une note de premier niveau, "Bienvenue". Une assertion
+  // "children est un tableau" passerait avec un tableau vide et ne
+  // détecterait ni un `parent_id IS ?` réécrit en `= ?` (silencieux en
+  // SQLite : NULL = NULL est faux), ni un seed() cassé.
   const r = await fetch(url('/api/notes/root'));
   assert.equal(r.status, 200);
   const corps = await r.json();
   assert.equal(corps.note.id, null);
-  assert.ok(Array.isArray(corps.children));
+  assert.equal(corps.children.length, 1);
+  assert.equal(corps.children[0].titre, 'Bienvenue');
 });
 
 test('/api/notes/999999 (id inexistant) répond 404', async () => {
@@ -111,14 +117,65 @@ test('/api/notes/999999 (id inexistant) répond 404', async () => {
   assert.equal(r.status, 404);
 });
 
-test('une écriture sans session Access échoue proprement (400, pas une pile d\'appels)', async () => {
+test('un corps JSON malformé sur /api/write échoue proprement (400, pas une pile d\'appels)', async () => {
   // Ce serveur n'implémente aucune authentification (Access la garantit en
-  // amont) : ce test ne vérifie pas un refus d'accès, seulement que la route
-  // valide bien son corps et ne fuit pas d'erreur interne.
+  // amont) : ce test ne vérifie pas un refus d'accès. Il vérifie le
+  // gestionnaire d'erreur applicatif (server.js) qui existe précisément pour
+  // qu'un corps JSON invalide ne fasse pas fuir de pile d'appels ni de
+  // fragment de la requête dans le journal — un {} bien formé n'atteint
+  // jamais ce chemin (il s'arrête plus tôt, sur "titre requis").
+  const r = await fetch(url('/api/write/notes'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{ceci nest pas du json'
+  });
+  assert.equal(r.status, 400);
+  const corps = await r.json();
+  assert.equal(corps.error, 'requete invalide');
+  assert.ok(!/at .*server\.js:/.test(JSON.stringify(corps)), 'la réponse laisse fuir une pile d\'appels');
+});
+
+test('{} sur /api/write/notes échoue sur la validation applicative (titre requis)', async () => {
   const r = await fetch(url('/api/write/notes'), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({})
   });
   assert.equal(r.status, 400);
+  const corps = await r.json();
+  assert.equal(corps.error, 'titre requis');
+});
+
+test('écriture → lecture → suppression : le chemin DB réel fonctionne de bout en bout', async () => {
+  // Le plus important des cas non couverts jusqu'ici : /health ne touche
+  // jamais SQLite (server.js), donc rien ne garantissait qu'une écriture
+  // aboutisse vraiment avant ce test.
+  const creation = await fetch(url('/api/write/notes'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ parent_id: null, titre: 'Note de test smoke', contenu: 'temporaire' })
+  });
+  assert.equal(creation.status, 201);
+  const note = await creation.json();
+  assert.equal(note.titre, 'Note de test smoke');
+  assert.ok(Number.isInteger(note.id));
+
+  const lecture = await fetch(url(`/api/notes/${note.id}`));
+  assert.equal(lecture.status, 200);
+  const relue = await lecture.json();
+  assert.equal(relue.note.titre, 'Note de test smoke');
+
+  const deplacement = await fetch(url(`/api/write/notes/${note.id}`), {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ x: 42, y: -7 })
+  });
+  assert.equal(deplacement.status, 200);
+  assert.equal((await deplacement.json()).x, 42);
+
+  const suppression = await fetch(url(`/api/write/notes/${note.id}`), { method: 'DELETE' });
+  assert.equal(suppression.status, 204);
+
+  const apresSuppression = await fetch(url(`/api/notes/${note.id}`));
+  assert.equal(apresSuppression.status, 404);
 });
