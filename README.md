@@ -1,5 +1,7 @@
 # Mindmap
 
+<!-- déploiement continu (pull-based) actif depuis le 09/09/2026 -->
+
 Mindmap 3D a navigation spatiale : chaque note contient ses propres notes.
 
 **Un seul monde continu.** Ouvrir une note fait apparaitre ses notes filles
