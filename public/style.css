@@ -5,18 +5,19 @@
    portfolio) : c'est une scene spatiale, elle reste sombre y compris en
    `prefers-color-scheme: light`. Les couleurs sont donc litterales ici --
    y appliquer des jetons de theme clair produirait du presque-noir sur du
-   presque-noir. Ces valeurs doivent rester identiques a COULEURS dans
-   scene.js, sinon le fond HTML et le fond WebGL divergent. */
+   presque-noir. Palette stricte (six couleurs) : elle doit rester identique
+   a COULEURS dans scene.js, sinon le fond HTML et le fond WebGL divergent. */
 
 :root {
-  --fond: #08070f;
-  --texte: #cfcbe0;
-  --attenue: #8d89a3;
-  --discret: #6f6b85;
+  --fond: #0f1115;
   --ambre: #e6b450;
-  --ambre-clair: #ffdf9e;
-  --panneau: rgba(13, 13, 20, .78);
-  --trait: #26243a;
+  --texte: #ece9e2;
+  --attenue: #9c9ba6;
+  --panneau: #15161a;
+  --bordure: #2a2a2e;
+  /* Etiquettes 3D en typo systeme (lisibilite a toute taille de police OS) ;
+     HUD et panneaux en mono (identite visuelle du portfolio). */
+  --systeme: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
@@ -28,9 +29,12 @@ html, body {
   overflow: hidden;
   background: var(--fond);
   color: var(--texte);
-  font-family: var(--mono);
-  font-size: 14px;
+  font: 14px/1.5 var(--mono);
 }
+
+/* Regle unique : aucun element cache ne doit reapparaitre via une autre
+   regle (les panneaux passent tous par [hidden], jamais par une classe). */
+[hidden] { display: none !important; }
 
 /* Le h1 porte le referencement et les lecteurs d'ecran : on le sort du champ
    visuel sans le retirer de l'arbre. En classe et non en attribut `style` :
@@ -45,41 +49,68 @@ html, body {
   white-space: nowrap;
 }
 
+/* --- Scene et etiquettes --------------------------------------------- */
+
 #scene {
   position: fixed;
   inset: 0;
+  z-index: 0;
   cursor: grab;
-  transition: opacity .25s ease;
 }
+#scene.sur-note { cursor: pointer; }
 #scene canvas { display: block; }
+
+/* Calque CSS2D : le renderer y ecrit display/transform/zIndex a chaque
+   frame (jamais y toucher depuis une regle qui poserait `hidden`). Le
+   contexte d'empilement local garde ces zIndex confines au calque. */
+#etiquettes {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.etiquette {
+  pointer-events: auto;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--texte);
+  font: 500 .85rem/1.2 var(--systeme);
+  padding: .15rem .4rem .35rem;
+  /* Ombre portee : lisibilite garantie sur un fond de globe clair comme sombre. */
+  text-shadow: 0 1px 2px var(--fond), 0 0 8px rgba(15, 17, 21, .95);
+  transition: opacity .25s ease, font-size .25s ease, color .2s ease;
+}
+.etiquette--ouverte { font-size: 1.1rem; font-weight: 600; color: var(--ambre); }
+.etiquette--enfant { font-size: .85rem; font-weight: 500; }
+.etiquette--petit { font-size: .72rem; font-weight: 400; opacity: .7; color: var(--attenue); }
+.etiquette--survol { color: var(--ambre); opacity: 1; }
+/* Dos du globe : attenuee et non cliquable (la face avant prime). */
+.etiquette.etiquette--derriere { opacity: .15; pointer-events: none; }
+/* Freres/ancetres : masquee par defaut, revelee au survol de leur bille. */
+.etiquette.etiquette--cachee { opacity: 0; pointer-events: none; }
+.etiquette.etiquette--cachee.etiquette--survol { opacity: 1; pointer-events: auto; }
+
+/* --- Panneaux communs -------------------------------------------------- */
 
 .panneau {
   position: fixed;
-  background: var(--panneau);
-  border: 1px solid var(--trait);
-  border-radius: 10px;
-  padding: .75rem .85rem;
-  backdrop-filter: blur(6px);
   z-index: 10;
+  background: var(--panneau);
+  border: 1px solid var(--bordure);
+  border-radius: 8px;
+  padding: .75rem .85rem;
+  /* Long titre/contenu sans espace : casse plutot qu'un debordement horizontal. */
+  overflow-wrap: anywhere;
 }
 
-.hud-titre {
-  color: var(--ambre);
+.hud-titre, #fil-ariane, .resultat-chemin {
+  text-transform: uppercase;
   letter-spacing: .14em;
   font-size: .68rem;
-  margin-bottom: .55rem;
+  color: var(--attenue);
 }
-
-/* Panneau lateral : le contenu de la note ouverte. Il ne remplace jamais la
-   scene -- le monde reste visible a cote, c'est tout l'interet. */
-#panneau-note {
-  top: 1rem;
-  left: 1rem;
-  width: min(340px, calc(100vw - 2rem));
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
-}
-#panneau-note[hidden] { display: none !important; }
 
 .panneau-tete {
   display: flex;
@@ -88,21 +119,11 @@ html, body {
   gap: .5rem;
 }
 
-#bouton-fermer-note {
-  min-height: 32px;
-  min-width: 32px;
-  padding: 0;
-  font-size: 1rem;
-  line-height: 1;
-}
-
 #titre-note {
   margin: .2rem 0 .5rem;
-  color: var(--texte);
   font-size: 1rem;
   font-weight: 600;
 }
-
 #contenu-note {
   margin: 0 0 .7rem;
   color: var(--attenue);
@@ -115,106 +136,206 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: .5rem;
-  border-top: 1px solid #211f33;
+  border-top: 1px solid var(--bordure);
   padding-top: .55rem;
 }
+.hud-compte { color: var(--attenue); font-size: .72rem; letter-spacing: .06em; }
 
-.hud-compte {
-  color: var(--discret);
-  font-size: .72rem;
-  letter-spacing: .06em;
-}
-
-#fil-ariane {
-  top: 1rem;
-  right: 1rem;
-  max-width: min(46ch, calc(100vw - 2rem));
-  color: var(--attenue);
-  font-size: .72rem;
-  letter-spacing: .06em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-#astuce {
-  left: 1rem;
-  bottom: 1rem;
-  color: var(--discret);
-  font-size: .68rem;
-  line-height: 1.7;
-  letter-spacing: .04em;
-}
-#astuce[hidden] { display: none !important; }
+/* --- Boutons ------------------------------------------------------------ */
 
 button {
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 .85rem;
-  background: none;
-  border: 1px solid var(--trait);
+  background: transparent;
+  border: 1px solid var(--ambre);
   border-radius: 6px;
-  color: var(--texte);
-  font-family: var(--mono);
+  color: var(--ambre);
+  font: inherit;
   font-size: .78rem;
   letter-spacing: .06em;
   cursor: pointer;
-  transition: border-color .2s ease, color .2s ease;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease;
 }
-button:hover { border-color: var(--ambre); color: var(--ambre-clair); }
-button:focus-visible { outline: 2px solid var(--ambre); outline-offset: 2px; }
-button[hidden] { display: none !important; }
+button:hover { background: rgba(230, 180, 80, .1); }
+button.principal { background: var(--ambre); color: var(--fond); font-weight: 600; }
+button.principal:hover { background: var(--ambre); opacity: .9; }
+/* Palette stricte (amendement G) : pas de rouge, le confirm() natif porte
+   deja le cote destructeur de la suppression. */
+button.danger { color: var(--attenue); border-color: var(--bordure); }
+button.danger:hover { border-color: var(--ambre); color: var(--ambre); }
 
-#bouton-remonter { border-left: 2px solid var(--ambre); }
+/* Un seul point de focus visible pour toute la page, quel que soit l'element. */
+:is(button, input, textarea, [tabindex], a, .etiquette):focus-visible {
+  outline: 2px solid var(--ambre);
+  outline-offset: 2px;
+}
+
+/* --- HUD haut : fil d'Ariane + recherche -------------------------------- */
+
+#hud-haut {
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  right: 1rem;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  /* Le conteneur ne capte rien lui-meme : seuls ses enfants sont cliquables,
+     le reste de la bande laisse passer les gestes vers la scene. */
+  pointer-events: none;
+}
+#hud-haut > * { pointer-events: auto; }
+
+#fil-ariane { max-width: min(60ch, 60vw); }
+#fil-ariane ol {
+  display: flex;
+  gap: .4rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+}
+#fil-ariane li + li::before { content: "›"; margin-right: .4rem; opacity: .5; }
+#fil-ariane button {
+  min-height: 32px;
+  border: 0;
+  padding: 0 .2rem;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  border-bottom: 1px solid transparent;
+}
+#fil-ariane button:hover { background: none; }
+#fil-ariane [aria-current="page"] { color: var(--texte); border-bottom-color: var(--ambre); }
+
+#recherche { position: relative; width: min(300px, 40vw); }
+#champ-recherche {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  appearance: none;
+  background: var(--panneau);
+  border: 1px solid var(--bordure);
+  border-radius: 8px;
+  color: var(--texte);
+  font: inherit;
+  padding: .4rem .7rem;
+}
+
+#resultats {
+  position: absolute;
+  top: calc(100% + .35rem);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: .3rem;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: var(--panneau);
+  border: 1px solid var(--bordure);
+  border-radius: 8px;
+}
+#resultats li {
+  padding: .4rem .5rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: .1rem;
+}
+#resultats [aria-selected="true"], #resultats li:hover {
+  outline: 1px solid var(--ambre);
+  outline-offset: -1px;
+  background: rgba(230, 180, 80, .08);
+}
+/* Message "Indexation…"/"Aucun résultat" : non selectionnable, pas de survol. */
+#resultats li[aria-disabled="true"] { cursor: default; opacity: .6; }
+#resultats li[aria-disabled="true"]:hover { outline: none; background: none; }
+
+/* --- Panneau note -------------------------------------------------------- */
+
+#panneau-note {
+  top: 4.5rem;
+  left: 1rem;
+  width: min(360px, calc(100vw - 2rem));
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+#bouton-fermer-note { min-height: 32px; min-width: 32px; padding: 0; font-size: 1rem; line-height: 1; }
+
+.liste-enfants {
+  list-style: none;
+  margin: .5rem 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+.liste-enfants button { min-height: 32px; font-size: .72rem; }
+
+#astuce { left: 1rem; bottom: 1rem; font-size: .68rem; color: var(--attenue); line-height: 1.7; }
+
+/* --- Panneau edition ------------------------------------------------------ */
 
 #panneau-edition {
   right: 1rem;
   bottom: 1rem;
+  z-index: 20;
   width: min(360px, calc(100vw - 2rem));
   display: flex;
   flex-direction: column;
   gap: .6rem;
-  z-index: 20;
 }
-#panneau-edition[hidden] { display: none !important; }
-
-#panneau-edition input,
-#panneau-edition textarea {
+#panneau-edition input, #panneau-edition textarea {
   width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: .5rem;
-  background: rgba(8, 7, 15, .85);
-  border: 1px solid var(--trait);
+  background: var(--fond);
+  border: 1px solid var(--bordure);
   border-radius: 6px;
   color: var(--texte);
-  font-family: var(--mono);
+  font: inherit;
   font-size: .82rem;
 }
 #panneau-edition textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
-#panneau-edition input:focus-visible,
-#panneau-edition textarea:focus-visible { outline: 2px solid var(--ambre); outline-offset: 1px; }
+.rangee-boutons { display: flex; gap: .5rem; justify-content: space-between; }
 
-.rangee-boutons {
-  display: flex;
-  gap: .5rem;
-  justify-content: space-between;
-}
+.avis { top: 1rem; left: 1rem; right: 1rem; }
 
-button.principal {
-  background: var(--ambre);
-  border-color: var(--ambre);
-  color: #0d0d14;
-  font-weight: 600;
-}
-button.principal:hover { background: var(--ambre-clair); border-color: var(--ambre-clair); color: #0d0d14; }
-button.danger { color: #e07a7a; border-color: #4a2b2b; }
-button.danger:hover { border-color: #e07a7a; color: #e07a7a; }
-
-@media (prefers-reduced-motion: reduce) {
-  #scene { transition: none; }
-}
+/* --- Mobile (amendement D) ------------------------------------------------ */
 
 @media (max-width: 560px) {
-  #fil-ariane { display: none; }
+  /* HUD empile en bas plutot que masque : fil d'Ariane et recherche restent
+     utilisables sans clavier physique ni geste d'agrandissement. */
+  #hud-haut {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: .5rem;
+    padding: .5rem;
+    background: var(--panneau);
+    border-top: 1px solid var(--bordure);
+    border-radius: 12px 12px 0 0;
+  }
+  #fil-ariane, #recherche { max-width: 100%; width: 100%; }
+  #resultats { top: auto; bottom: calc(100% + .35rem); }
+  /* panneau-note au-dessus du HUD bas (7.25rem ~= sa hauteur : 32+40px de
+     boutons/champ + gaps/paddings) ; 38vh (amendement D) plutot que 40vh
+     pour laisser un peu plus de globe visible au-dessus. */
+  #panneau-note { top: auto; bottom: 7.25rem; left: .5rem; right: .5rem; width: auto; max-height: 38vh; }
   #astuce { display: none; }
-  #panneau-note { width: calc(100vw - 2rem); max-height: 45vh; }
+  #panneau-edition { left: .5rem; right: .5rem; bottom: .5rem; width: auto; z-index: 40; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .etiquette, button, #resultats, #scene { transition: none; }
 }

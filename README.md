@@ -49,12 +49,43 @@ npm install
 node server.js      # http://127.0.0.1:3020
 ```
 
-La base est creee et pre-remplie de donnees d'exemple au premier demarrage.
+La base est creee et pre-remplie de donnees d'exemple au premier demarrage
+(6 notes racine avec 2-3 filles chacune).
+
+## Addons vendores
+
+Aucune etape de build, aucun asset distant (CSP `script-src 'self'`) : Three.js
+et ses addons sont copies depuis `node_modules` dans `public/vendor/`, sous un
+dossier par version (`three-0.185.1/`, `camera-controls-3.1.2/`) -- une montee
+de version cree un nouveau dossier plutot que d'ecraser l'ancien, ce qui rend
+le cache HTTP long et `immutable` sans risque. Les specificateurs nus `'three'`
+des addons sont reecrits en chemin relatif vers `build/three.module.min.js`
+(une import map inline serait bloquee par la CSP).
+
+| Addon | Pourquoi |
+|---|---|
+| `three` (build + core) | Moteur de rendu 3D du globe fractal |
+| `renderers/CSS2DRenderer.js` | Etiquettes de notes en HTML natif (nettes a tout zoom), plutot que des sprites canvas |
+| `postprocessing/EffectComposer.js` + `RenderPass.js` | Pipeline de rendu multi-passes, socle du bloom |
+| `postprocessing/UnrealBloomPass.js` | Lueur ambree de la note ouverte |
+| `postprocessing/OutputPass.js` | Tone mapping + conversion sRGB en sortie de pipeline, sans lequel le rendu post-composer est trop sombre |
+| `postprocessing/{Pass,ShaderPass,MaskPass}.js` | Dependances internes d'EffectComposer/UnrealBloomPass |
+| `shaders/{CopyShader,LuminosityHighPassShader,OutputShader}.js` | Shaders consommes par les passes ci-dessus |
+| `camera-controls` | Camera orbitale avec cadrage anime (`fitToSphere`) sur la sphere de la note ouverte |
+
+Pour monter une nouvelle version : copier les fichiers dans un nouveau dossier
+`public/vendor/<lib>-<version>/`, reecrire les specificateurs `'three'` des
+addons (`sed` sur `from '../../../build/three.module.min.js'`), mettre a jour
+les imports dans `public/*.js`, laisser l'ancien dossier tant qu'un visiteur
+peut encore l'avoir en cache (7 jours).
 
 ## Fichiers
 
-- `server.js` — routes Express, en-tetes de securite, separation lecture/ecriture
+- `server.js` — routes Express, en-tetes de securite, separation lecture/ecriture, montage statique de `public/vendor/`
 - `db.js` — schema, requetes preparees, donnees d'exemple
-- `public/scene.js` — scene Three.js : globe, notes, etiquettes, raycast
-- `public/controls.js` — camera spherique : zoom molette, pan, orbite Alt
+- `public/scene.js` — scene Three.js : globe fractal, etiquettes CSS2D, bloom, raycast
+- `public/controls.js` — adaptateur camera-controls : orbite, pan, dolly, cadrage anime
+- `public/anim.js` — utilitaire de transition (`tween`), sans dependance, respecte `prefers-reduced-motion`
+- `public/recherche.js` — recherche combobox : indexation paresseuse de l'arbre, filtre, clavier
 - `public/app.js` — etat, navigation fractale, HUD, edition
+- `public/vendor/` — Three.js et camera-controls vendores (voir ci-dessus)

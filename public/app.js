@@ -1,33 +1,53 @@
+// Point d'entree : orchestre scene.js/controls.js/anim.js/recherche.js sans
+// jamais faire de maths 3D lui-meme (hors appel a pointSurSphereDe /
+// lonLatDepuisPoint). Vue unique de l'etat : `ouverteId`. Tout le reste
+// (roles, echelles, opacites) est derive par scene.js#appliquerEtat.
 import {
   attacher,
   redimensionner,
   rendu,
+  horloge,
+  REVISION_THREE,
   ajouterNotes,
-  majEtats,
+  assurerGlobe,
+  appliquerEtat,
   survoler,
-  deplacerNote,
-  retirerNote,
   noteSousPointeur,
   pointSurSphereDe,
   lonLatDepuisPoint,
-  distanceCadrage,
+  deplacerNote,
+  renommerNote,
+  retirerNote,
   noeud,
   estDeplie,
-  compterEnfants,
-  RAYON_GLOBE,
+  enfantsDe,
+  cheminIdsDe,
+  sphereDe,
 } from './scene.js'
-import { brancherControles, appliquerCamera, viserCible, distance, reglerDistance } from './controls.js'
+import { brancherControles, appliquerCamera, viserCible, reglerVol, reglerDecalageMobile } from './controls.js'
+import { dureeAnim, tween } from './anim.js'
+import { brancherRecherche, invaliderIndexRecherche, ouvrirRecherche } from './recherche.js'
+
+// Deux copies de three (scene.js + un import divergent ailleurs) donneraient
+// des constructeurs Vector3/Spherical distincts et des bugs silencieux.
+console.assert(REVISION_THREE === '185', 'deux copies de three ?')
 
 const enEdition = location.pathname.startsWith('/edit')
 
+// --- References DOM -------------------------------------------------------
+
 const conteneur = document.getElementById('scene')
+const filArianeOl = document.querySelector('#fil-ariane ol')
+const champRecherche = document.getElementById('champ-recherche')
+const resultats = document.getElementById('resultats')
 const panneauNote = document.getElementById('panneau-note')
+const boutonFermerNote = document.getElementById('bouton-fermer-note')
 const titreNote = document.getElementById('titre-note')
 const contenuNote = document.getElementById('contenu-note')
+const listeEnfants = document.getElementById('liste-enfants')
 const compteur = document.getElementById('compteur-notes')
-const filAriane = document.getElementById('fil-ariane')
 const boutonRemonter = document.getElementById('bouton-remonter')
-const boutonFermer = document.getElementById('bouton-fermer-note')
+const annonce = document.getElementById('annonce')
 const astuce = document.getElementById('astuce')
 const panneau = document.getElementById('panneau-edition')
 const champTitre = document.getElementById('champ-titre')
@@ -35,23 +55,21 @@ const champContenu = document.getElementById('champ-contenu')
 const boutonSupprimer = document.getElementById('bouton-supprimer')
 const boutonAnnuler = document.getElementById('bouton-annuler')
 
-/** Note actuellement selectionnee (panneau lateral ouvert), ou null a la racine. */
-let selectionId = null
+if (enEdition) astuce.hidden = false
+
+// --- Etat (vue unique) -----------------------------------------------------
+
+let ouverteId = null // niveau ouvert, null = racine ; tout le reste en derive
+let enTransition = false // un seul verrou ; les navigations concurrentes sont ignorees
+let volAnnule = false // Echap pendant un vol multi-niveaux : arret propre en fin de pas
 let noteEnDeplacement = null
 let editionNoteId = null
 let positionNouvelleNote = null
-let enTransition = false
+let survolDemande = null // {x, y, etiquetteId} : un seul raycast par frame, resolu dans la boucle
 
-attacher(conteneur)
-reglerDistance(distanceCadrage(RAYON_GLOBE))
-appliquerCamera()
-window.addEventListener('resize', () => {
-  redimensionner()
-  appliquerCamera()
-})
-if (enEdition) astuce.hidden = false
+const cacheEnfants = new Map() // Map<id|null, note[]> : reponses /api/notes/:id, videe a chaque ecriture
 
-// --- Donnees -------------------------------------------------------------
+// --- Donnees ----------------------------------------------------------------
 
 async function chargerNote(id) {
   const rep = await fetch(id === null ? '/api/notes/root' : `/api/notes/${id}`)
@@ -74,107 +92,175 @@ async function appelApi(methode, url, corps) {
   return rep.status === 204 ? null : rep.json()
 }
 
-// --- Boucle de rendu -----------------------------------------------------
-
-function boucle() {
-  rendu()
-  requestAnimationFrame(boucle)
-}
-requestAnimationFrame(boucle)
-
-// --- Ouvrir une note : ses filles apparaissent autour d'elle --------------
-
-/**
- * La camera se recentre sur la note ouverte et se rapproche, mais rien ne
- * disparait : le niveau precedent reste visible autour. C'est ce qui distingue
- * ce monde continu d'une navigation "une scene par note".
- */
-function cadrerSur(centre, rayon, duree = 620) {
-  const cibleDistance = distanceCadrage(rayon)
-  const departDistance = distance()
-  const debut = performance.now()
-
-  return new Promise((resoudre) => {
-    const avancer = (t) => {
-      const p = Math.min(1, (t - debut) / duree)
-      const e = 1 - Math.pow(1 - p, 4)
-      viserCible(centre, e)
-      reglerDistance(departDistance + (cibleDistance - departDistance) * e)
-      appliquerCamera()
-      if (p < 1) requestAnimationFrame(avancer)
-      else resoudre()
-    }
-    requestAnimationFrame(avancer)
+// Cache pose seulement apres succes (jamais sur un id en echec) : un echec
+// reseau transitoire reste retentable au prochain appel, sans figer une
+// promesse rejetee dans le cache.
+function chargerEnfants(id) {
+  const enfants = cacheEnfants.get(id)
+  if (enfants) return Promise.resolve(enfants)
+  return chargerNote(id).then(({ children }) => {
+    cacheEnfants.set(id, children)
+    return children
   })
 }
 
-async function ouvrirNote(note) {
+/** A appeler apres TOUTE ecriture (POST/PUT/DELETE/PATCH). */
+function invaliderCache() {
+  cacheEnfants.clear()
+  invaliderIndexRecherche()
+}
+
+// --- Boucle de rendu ---------------------------------------------------------
+
+function resoudreNote(sx, sy, etiquetteId) {
+  return etiquetteId !== null ? (noeud(Number(etiquetteId))?.note ?? null) : noteSousPointeur(sx, sy)
+}
+
+function traiterSurvol({ x, y, etiquetteId }) {
+  const note = resoudreNote(x, y, etiquetteId)
+  survoler(note ? note.id : null)
+  conteneur.classList.toggle('sur-note', note !== null)
+}
+
+function boucle() {
+  const bouge = appliquerCamera(horloge.getDelta()) // controls.update(dt) : ecrit camera.position AVANT raycast/rendu
+  if (survolDemande) {
+    traiterSurvol(survolDemande)
+    survolDemande = null
+  }
+  rendu(bouge)
+  requestAnimationFrame(boucle)
+}
+
+// --- Navigation : un seul algorithme (§7) -----------------------------------
+
+/**
+ * cibleId + chemin optionnel (fourni par la recherche, qui connait deja les
+ * ids sans repasser par la scene). Compare le chemin courant au chemin vise,
+ * remonte jusqu'a l'ancetre commun puis redescend : un clic sur une fille est
+ * 1 descente, un clic sur un frere est 1 montee + 1 descente, etc.
+ */
+async function naviguerVers(cibleId, cheminIds) {
   if (enTransition) return
   enTransition = true
-  // `finally` obligatoire : sans lui, un seul chargement en echec (note
-  // supprimee entre-temps, coupure reseau) laissait `enTransition` a true pour
-  // toujours -- plus aucune note ne s'ouvrait et le bouton remonter restait
-  // inerte jusqu'a un rechargement manuel.
+  volAnnule = false
   try {
-    if (!estDeplie(note.id)) {
-      const { children } = await chargerNote(note.id)
-      ajouterNotes(note.id, children)
+    const vers = cheminIds ?? cheminIdsDe(cibleId)
+    const depuis = cheminIdsDe(ouverteId)
+    let c = 0
+    while (c < depuis.length && c < vers.length && depuis[c] === vers[c]) c++
+    const montees = depuis.length - c
+    const descentes = vers.slice(c)
+    const multi = montees + descentes.length > 1
+    const ms = dureeAnim(multi ? 250 : 600)
+    reglerVol(multi)
+    for (let i = 0; i < montees && !volAnnule; i++) await remonter(ms)
+    for (const id of descentes) {
+      if (volAnnule) break
+      await entrer(id, ms)
     }
-
-    selectionId = note.id
-    const n = noeud(note.id)
-    majEtats(selectionId)
-    majPanneau(note)
-    await cadrerSur(n.centre, n.rayon * 0.62)
   } catch (erreur) {
     signalerErreur("Cette note n'a pas pu etre ouverte.", erreur)
   } finally {
+    reglerVol(false)
     enTransition = false
+    majHud()
   }
 }
 
-async function revenirALaRacine() {
-  if (enTransition) return
-  enTransition = true
-  try {
-    selectionId = null
-    majEtats(null)
-    fermerPanneauNote()
-    await cadrerSur({ x: 0, y: 0, z: 0 }, RAYON_GLOBE)
-  } finally {
-    enTransition = false
-  }
+/** Pas atomique : precondition noeud(id).parentId === ouverteId (garanti par l'appelant). */
+async function entrer(id, ms) {
+  // Lance sans attendre : le reseau avance en parallele du tween, les filles
+  // arrivent cachees (ajouterNotes ne pose aucun role).
+  const pEnfants = estDeplie(id) ? null : chargerEnfants(id).then((enfants) => ajouterNotes(id, enfants))
+  assurerGlobe(id) // grille + verre crees si absents, echelle de depart, opacites 0
+  const { centre, rayon } = sphereDe(id)
+  viserCible(centre, rayon, ms > 0) // promesse non attendue : le tween a lui seul une duree fixe
+  reglerDecalageMobile(rayon)
+  const depuis = ouverteId
+  ouverteId = id
+  majHud() // fil d'ariane et panneau immediats, la scene suit
+  await Promise.all([tween(ms, (p) => appliquerEtat(depuis, id, p)), pEnfants])
+  appliquerEtat(id, id, 1) // verrouille les visible=false, pose les roles des filles arrivees
+  annoncer()
+  precharger(id)
 }
 
-async function remonterDUnNiveau() {
-  const courant = selectionId === null ? null : noeud(selectionId)
-  if (!courant) return
-  if (courant.parentId === null) return revenirALaRacine()
-  const parent = noeud(courant.parentId)
-  if (!parent) return revenirALaRacine()
-  await ouvrirNote(parent.note)
+async function remonter(ms) {
+  const id = ouverteId
+  const parent = noeud(id).parentId
+  const { centre, rayon } = sphereDe(parent)
+  viserCible(centre, rayon, ms > 0)
+  reglerDecalageMobile(rayon)
+  ouverteId = parent
+  majHud()
+  await tween(ms, (p) => appliquerEtat(id, parent, p))
+  appliquerEtat(parent, parent, 1)
+  annoncer()
 }
 
-// --- Panneau lateral de la note ------------------------------------------
+/**
+ * Fire-and-forget : fait apparaitre les petits-enfants (tier .72rem) sans
+ * bloquer le verrou de navigation. Lit `ouverteId` au moment ou elle se
+ * termine (pas l'id capture) : idempotente, elle applique la verite courante
+ * meme si l'utilisateur a deja navigue ailleurs entre-temps.
+ */
+function precharger(id) {
+  Promise.all(
+    enfantsDe(id)
+      .filter((n) => !n.deplie)
+      .map((n) => chargerEnfants(n.note.id).then((enfants) => ajouterNotes(n.note.id, enfants)))
+  ).then(() => appliquerEtat(ouverteId, ouverteId, 1))
+}
 
-function majPanneau(note) {
-  const nbEnfants = compterEnfants(note.id)
+// --- HUD : fil d'ariane, panneau note, annonce, erreurs ---------------------
+
+function focusFilAriane() {
+  filArianeOl.querySelector('[aria-current]')?.focus()
+}
+
+function ligneBouton(id, titre) {
+  const li = document.createElement('li')
+  const bouton = document.createElement('button')
+  bouton.type = 'button'
+  bouton.dataset.id = id === null ? '' : String(id)
+  bouton.textContent = titre
+  li.appendChild(bouton)
+  return li
+}
+
+/** Reconstruit le fil d'ariane et le panneau depuis `ouverteId` : seule source de verite. */
+function majHud() {
+  filArianeOl.textContent = ''
+  filArianeOl.appendChild(ligneBouton(null, 'RACINE'))
+  for (const id of cheminIdsDe(ouverteId)) filArianeOl.appendChild(ligneBouton(id, noeud(id).note.titre))
+  filArianeOl.lastElementChild.firstElementChild.setAttribute('aria-current', 'page')
+
+  const seraCachee = ouverteId === null
+  // Focus rendu AVANT de masquer un panneau qui le contient : sinon le focus
+  // tombe dans le vide (aucun element suivant a activer au clavier).
+  if (seraCachee && !panneauNote.hidden && panneauNote.contains(document.activeElement)) focusFilAriane()
+  panneauNote.hidden = seraCachee
+  boutonRemonter.hidden = seraCachee
+  if (seraCachee) return
+
+  const note = noeud(ouverteId).note
+  const filles = enfantsDe(ouverteId)
   titreNote.textContent = note.titre
   contenuNote.textContent = note.contenu || '(pas de contenu)'
-  compteur.textContent = `${nbEnfants} note${nbEnfants > 1 ? 's' : ''} a l'interieur`
-  filAriane.textContent = cheminDe(note.id).join(' / ')
-  panneauNote.hidden = false
-  boutonRemonter.hidden = false
+  listeEnfants.textContent = ''
+  for (const n of filles) listeEnfants.appendChild(ligneBouton(n.note.id, n.note.titre))
+  compteur.textContent = `${filles.length} note${filles.length > 1 ? 's' : ''} a l'interieur`
 }
 
-function cheminDe(id) {
-  const chemin = []
-  let courant = id === null ? null : noeud(id)
-  while (courant) {
-    chemin.unshift(courant.note.titre)
-    courant = courant.parentId === null ? null : noeud(courant.parentId)
+function annoncer() {
+  if (ouverteId === null) {
+    annonce.textContent = 'Vue d ensemble'
+    return
   }
-  return ['Racine', ...chemin]
+  const note = noeud(ouverteId).note
+  const n = enfantsDe(ouverteId).length
+  annonce.textContent = `Note ouverte : ${note.titre}, ${n} note${n > 1 ? 's' : ''} a l interieur`
 }
 
 /** Un echec doit se voir : sinon la page reste noire ou inerte sans explication. */
@@ -183,85 +269,88 @@ function signalerErreur(message, erreur) {
   titreNote.textContent = 'Erreur'
   contenuNote.textContent = `${message} Rechargez la page pour reessayer.`
   compteur.textContent = ''
+  listeEnfants.textContent = ''
   panneauNote.hidden = false
   boutonRemonter.hidden = true
 }
 
-function fermerPanneauNote() {
-  panneauNote.hidden = true
-  boutonRemonter.hidden = true
-  filAriane.textContent = 'Racine'
-}
-
-boutonRemonter.addEventListener('click', remonterDUnNiveau)
-boutonFermer.addEventListener('click', revenirALaRacine)
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && panneau.hidden) remonterDUnNiveau()
+// Delegation : les boutons sont recrees a chaque majHud, un ecouteur par
+// bouton fuirait et perdrait ceux d'avant le premier rendu.
+filArianeOl.addEventListener('click', (e) => {
+  const bouton = e.target.closest('button[data-id]')
+  if (!bouton) return
+  // data-id="" pour la racine : Number('') vaudrait 0, jamais un id valide.
+  naviguerVers(bouton.dataset.id === '' ? null : Number(bouton.dataset.id))
+})
+listeEnfants.addEventListener('click', (e) => {
+  const bouton = e.target.closest('button[data-id]')
+  if (bouton) naviguerVers(Number(bouton.dataset.id))
+})
+boutonFermerNote.addEventListener('click', () => naviguerVers(null))
+boutonRemonter.addEventListener('click', () => {
+  if (ouverteId !== null) naviguerVers(noeud(ouverteId).parentId)
 })
 
-// --- Gestes --------------------------------------------------------------
+// --- Gestes (crochets de controls.js) ---------------------------------------
 
-brancherControles(conteneur, {
-  estGlisserNote: (sx, sy) => {
+const crochets = {
+  estGlisserNote(sx, sy, etiquetteId) {
     if (!enEdition) return false
-    const note = noteSousPointeur(sx, sy)
-    noteEnDeplacement = note ?? null
-    return note !== null
+    const note = resoudreNote(sx, sy, etiquetteId)
+    if (!note) return false
+    noteEnDeplacement = note
+    return true
   },
 
-  surGlisserNote: (sx, sy) => {
-    if (!noteEnDeplacement) return
+  surGlisserNote(sx, sy) {
     const n = noeud(noteEnDeplacement.id)
-    if (!n) return
     const point = pointSurSphereDe(n.parentId, sx, sy)
     if (!point) return
-    const parent = n.parentId === null ? null : noeud(n.parentId)
-    const centreParent = parent ? parent.centre : { x: 0, y: 0, z: 0 }
-    const { lon, lat } = lonLatDepuisPoint(point, centreParent)
+    const { lon, lat } = lonLatDepuisPoint(point, sphereDe(n.parentId).centre)
     noteEnDeplacement.x = lon
     noteEnDeplacement.y = lat
     deplacerNote(noteEnDeplacement.id, lon, lat)
   },
 
-  surFinGlisserNote: async (aBouge) => {
+  async surFinGlisserNote(aBouge) {
     const note = noteEnDeplacement
     noteEnDeplacement = null
     if (!note) return
-    if (aBouge) await appelApi('PATCH', `/api/write/notes/${note.id}/position`, { x: note.x, y: note.y })
-    else await ouvrirNote(note)
+    if (aBouge) {
+      await appelApi('PATCH', `/api/write/notes/${note.id}/position`, { x: note.x, y: note.y })
+      invaliderCache()
+    } else {
+      naviguerVers(note.id) // immobile = un clic : ouvrir la note plutot que la deplacer
+    }
   },
 
-  surClic: async (sx, sy) => {
-    const note = noteSousPointeur(sx, sy)
-    if (note) await ouvrirNote(note)
+  surClic(sx, sy, etiquetteId) {
+    const note = resoudreNote(sx, sy, etiquetteId)
+    if (note) naviguerVers(note.id)
   },
 
-  surSurvol: (sx, sy) => {
-    const note = noteSousPointeur(sx, sy)
-    survoler(note ? note.id : null)
-    conteneur.style.cursor = note ? 'pointer' : 'grab'
+  surSurvol(sx, sy, etiquetteId) {
+    survolDemande = { x: sx, y: sy, etiquetteId } // resolu dans boucle() : un raycast max par frame
   },
 
-  surClicDroit: (sx, sy) => {
+  surClicDroit(sx, sy, etiquetteId) {
     if (!enEdition) return
-    const note = noteSousPointeur(sx, sy)
+    const note = resoudreNote(sx, sy, etiquetteId)
     if (note) ouvrirPanneauEdition(note)
   },
 
-  surDoubleClicVide: (sx, sy) => {
+  surDoubleClicVide(sx, sy, etiquetteId) {
     if (!enEdition) return
-    if (noteSousPointeur(sx, sy)) return
-    // La nouvelle note se pose sur la sphere du niveau ouvert.
-    const point = pointSurSphereDe(selectionId, sx, sy)
+    if (resoudreNote(sx, sy, etiquetteId)) return
+    // La nouvelle note se pose sur la sphere du niveau actuellement ouvert.
+    const point = pointSurSphereDe(ouverteId, sx, sy)
     if (!point) return
-    const parent = selectionId === null ? null : noeud(selectionId)
-    const centreParent = parent ? parent.centre : { x: 0, y: 0, z: 0 }
-    positionNouvelleNote = lonLatDepuisPoint(point, centreParent)
+    positionNouvelleNote = lonLatDepuisPoint(point, sphereDe(ouverteId).centre)
     ouvrirPanneauEdition(null)
   },
-})
+}
 
-// --- Panneau d'edition ---------------------------------------------------
+// --- Edition (mode /edit) ----------------------------------------------------
 
 function ouvrirPanneauEdition(note) {
   editionNoteId = note ? note.id : null
@@ -273,6 +362,7 @@ function ouvrirPanneauEdition(note) {
 }
 
 function fermerPanneauEdition() {
+  if (panneau.contains(document.activeElement)) focusFilAriane()
   panneau.hidden = true
   editionNoteId = null
   positionNouvelleNote = null
@@ -288,43 +378,86 @@ panneau.addEventListener('submit', async (e) => {
 
   if (editionNoteId !== null) {
     const maj = await appelApi('PUT', `/api/write/notes/${editionNoteId}`, { titre, contenu })
-    // Le titre est dessine dans une texture : on retire puis on repose la note.
-    const n = noeud(editionNoteId)
-    const parentId = n ? n.parentId : null
-    retirerNote(editionNoteId)
-    ajouterNotes(parentId, [maj])
-    if (selectionId === editionNoteId) majPanneau(maj)
+    renommerNote(maj) // met a jour n.note + le texte de l'etiquette, sans retirer/reposer
   } else {
     const pos = positionNouvelleNote ?? { lon: 0, lat: 0 }
     const creee = await appelApi('POST', '/api/write/notes', {
-      parent_id: selectionId,
+      parent_id: ouverteId,
       titre,
       contenu,
       x: pos.lon,
       y: pos.lat,
     })
-    ajouterNotes(selectionId, [creee])
+    ajouterNotes(ouverteId, [creee])
+    appliquerEtat(ouverteId, ouverteId, 1)
   }
-  majEtats(selectionId)
+  invaliderCache()
+  majHud()
   fermerPanneauEdition()
 })
 
 boutonSupprimer.addEventListener('click', async () => {
   if (editionNoteId === null) return
   if (!confirm('Supprimer cette note et toutes ses notes filles ?')) return
-  await appelApi('DELETE', `/api/write/notes/${editionNoteId}`)
-  retirerNote(editionNoteId)
-  if (selectionId === editionNoteId) await revenirALaRacine()
+  const id = editionNoteId
+  await appelApi('DELETE', `/api/write/notes/${id}`)
+  // Si la note ouverte est supprimee (ou un de ses ancetres), il faut en
+  // sortir AVANT de la retirer : sinon noeud(ouverteId) devient indefini au
+  // milieu du pas de navigation.
+  if (ouverteId === id || cheminIdsDe(ouverteId).includes(id)) await naviguerVers(noeud(id).parentId)
+  retirerNote(id) // recursif sur les filles
+  invaliderCache()
+  majHud()
   fermerPanneauEdition()
 })
 
-// --- Depart --------------------------------------------------------------
+// --- Recherche + clavier global ----------------------------------------------
 
-try {
-  const { children } = await chargerNote(null)
-  ajouterNotes(null, children)
-  majEtats(null)
-  filAriane.textContent = 'Racine'
-} catch (erreur) {
-  signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
+brancherRecherche({
+  champ: champRecherche,
+  liste: resultats,
+  chargerEnfants,
+  surChoix: (entree) => naviguerVers(entree.id, entree.ids),
+  surFermeture: focusFilAriane,
+})
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    const cible = document.activeElement
+    const enSaisie = cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.isContentEditable)
+    if (!enSaisie) {
+      e.preventDefault()
+      ouvrirRecherche()
+      return
+    }
+  }
+  // Chaine unique : le champ de recherche a deja consomme son propre Echap
+  // (stopPropagation dans recherche.js) avant que celui-ci ne s'execute.
+  if (e.key === 'Escape') {
+    if (!panneau.hidden) fermerPanneauEdition()
+    else if (enTransition) volAnnule = true
+    else if (ouverteId !== null) naviguerVers(noeud(ouverteId).parentId)
+  }
+})
+
+// --- Depart -------------------------------------------------------------------
+
+attacher(conteneur)
+redimensionner()
+brancherControles(conteneur, crochets)
+viserCible(sphereDe(null).centre, sphereDe(null).rayon, false)
+window.addEventListener('resize', redimensionner)
+requestAnimationFrame(boucle)
+
+async function demarrer() {
+  try {
+    const enfants = await chargerEnfants(null)
+    ajouterNotes(null, enfants)
+    appliquerEtat(null, null, 1)
+  } catch (erreur) {
+    signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
+  } finally {
+    majHud()
+  }
 }
+demarrer()
