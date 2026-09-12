@@ -98,18 +98,39 @@ test('/edit sert la page (Access la protège en amont, pas ce serveur)', async (
   assert.equal(r.status, 200);
 });
 
-test('/api/notes/root répond avec la note de bienvenue du seed initial', async () => {
+test('/api/notes/root répond avec les six notes racine du seed initial, dans l\'ordre', async () => {
   // Une base neuve (MINDMAP_DB_PATH inexistant) déclenche seed() dans db.js :
-  // exactement une note de premier niveau, "Bienvenue". Une assertion
+  // exactement six notes de premier niveau, "Bienvenue" en tête. Une assertion
   // "children est un tableau" passerait avec un tableau vide et ne
   // détecterait ni un `parent_id IS ?` réécrit en `= ?` (silencieux en
-  // SQLite : NULL = NULL est faux), ni un seed() cassé.
+  // SQLite : NULL = NULL est faux), ni un seed() cassé. Comparer la liste
+  // complète des titres, dans l'ordre, vérifie en plus le ORDER BY id.
   const r = await fetch(url('/api/notes/root'));
   assert.equal(r.status, 200);
   const corps = await r.json();
   assert.equal(corps.note.id, null);
-  assert.equal(corps.children.length, 1);
+  assert.equal(corps.children.length, 6);
   assert.equal(corps.children[0].titre, 'Bienvenue');
+  assert.deepEqual(
+    corps.children.map((n) => n.titre),
+    ['Bienvenue', 'Comment ça marche', 'Projets', 'Sécurité', 'Infra', 'À propos']
+  );
+});
+
+test('/api/notes/:id sur « Projets » renvoie ses 3 notes filles, dont « Portfolio »', async () => {
+  const racine = await (await fetch(url('/api/notes/root'))).json();
+  const projets = racine.children.find((n) => n.titre === 'Projets');
+  assert.ok(projets, 'la note « Projets » manque à la racine');
+
+  const r = await fetch(url(`/api/notes/${projets.id}`));
+  assert.equal(r.status, 200);
+  const corps = await r.json();
+  assert.equal(corps.note.titre, 'Projets');
+  assert.equal(corps.children.length, 3);
+  assert.ok(
+    corps.children.some((n) => n.titre === 'Portfolio'),
+    '« Portfolio » manque parmi les filles de « Projets »'
+  );
 });
 
 test('/api/notes/999999 (id inexistant) répond 404', async () => {
