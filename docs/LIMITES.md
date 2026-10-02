@@ -38,12 +38,19 @@ que sur une seule machine.
 ## Fil d'Ariane tronqué
 
 À quatre niveaux de profondeur, le dernier élément du fil d'Ariane est coupé
-(« STRUC » au lieu de « STRUCTURE ») à 1536 px de large.
+(« STRUC » au lieu de « STRUCTURE ») à 1536 px de large. Le fil défile
+horizontalement mais sa barre est masquée et il ne se cale pas sur la note
+ouverte.
 
 ## Mobile
 
-Le rendu à 390 px n'a pas été revérifié en production : seules les captures
-Playwright de `docs/captures/` (base d'exemple, en local) en attestent.
+Vérifié en production en émulation 390 × 844 (agent Android, tactile émulé,
+clics souris) : aucun débordement horizontal, fil d'Ariane et recherche empilés
+en bas, panneau de note au-dessus, ouverture d'une note par son étiquette.
+
+Non vérifié : un vrai téléphone, les gestes tactiles (pincer, glisser) et la
+fluidité sur mobile. Le panneau de note recouvre le bas de la scène et peut
+cacher des notes filles.
 
 ## Densité d'étiquettes
 
