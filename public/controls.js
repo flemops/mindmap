@@ -1,133 +1,169 @@
-// Camera pilotee en coordonnees spheriques autour d'une cible deplacable.
-//
-//   molette          -> zoom (distance camera <-> cible)
-//   clic-glisser     -> orbite 3D (azimut / elevation) : le geste principal
-//   Alt + glisser    -> pan 2D (on deplace la cible dans le plan de l'ecran)
-//
-// Ecrit a la main plutot qu'avec OrbitControls : le schema demande ne
-// correspond pas aux gestes par defaut d'OrbitControls, et 80 lignes lisibles
-// valent mieux qu'un addon qu'il faudrait de toute facon reconfigurer.
-import * as THREE from '/vendor/three.module.min.js'
-import { camera } from './scene.js'
+// Adaptateur camera-controls : la lib gere toute l'inertie de la camera (rotation,
+// pan, dolly, amorti). Ce module se limite a (1) la configurer une fois et (2)
+// discriminer par-dessus elle les gestes applicatifs -- clic, glisser une note,
+// clic droit immobile, double-clic sur le vide -- sans jamais ecrire
+// `camera.position` a la main (interdit par la spec).
+import * as THREE from './vendor/three-0.185.1/build/three.module.min.js'
+import CameraControls from './vendor/camera-controls-3.1.2/camera-controls.module.js'
+import { camera, RAYON_GLOBE, distanceCadrage } from './scene.js'
 
-const DISTANCE_MIN = 130
-const DISTANCE_MAX = 900
+// Doit utiliser exactement le meme module three que scene.js : deux copies
+// donneraient deux constructeurs Vector3/Spherical distincts, et les `instanceof`
+// internes de la lib echoueraient silencieusement.
+CameraControls.install({ THREE })
 
-export const cible = new THREE.Vector3(0, 0, 0)
-const spherique = new THREE.Spherical(320, Math.PI / 2.4, 0.6)
+const RATIO_MIN_DISTANCE = 1.15 // sous 1, un dollyTo pourrait coller la camera dans le verre
+const MARGE_CADRAGE = 1.3 // fitToSphere n'a aucun padding : Sphere(centre, r × 1.3) donne ≈ 3.08 r de distance
+const SEUIL_SOURIS = 4 // px : en-deca, un clic n'est pas un glisser
+const SEUIL_TACTILE = 8
 
-export function appliquerCamera() {
-  spherique.makeSafe()
-  camera.position.setFromSpherical(spherique).add(cible)
-  camera.lookAt(cible)
+// Sans domElement : connect() est appele depuis brancherControles, apres que
+// nos propres ecouteurs soient poses (ordre impose par la spec).
+const controls = new CameraControls(camera)
+controls.smoothTime = 0.35
+controls.draggingSmoothTime = 0.12
+controls.minPolarAngle = 0.12
+controls.maxPolarAngle = Math.PI - 0.12
+// Valeurs = defauts de camera-controls pour une PerspectiveCamera, postees
+// explicitement : un futur changement de defaut en amont ne doit pas nous surprendre.
+controls.mouseButtons = {
+  left: CameraControls.ACTION.ROTATE,
+  middle: CameraControls.ACTION.DOLLY,
+  right: CameraControls.ACTION.TRUCK,
+  wheel: CameraControls.ACTION.DOLLY,
+}
+controls.touches = {
+  one: CameraControls.ACTION.TOUCH_ROTATE,
+  two: CameraControls.ACTION.TOUCH_DOLLY_TRUCK,
+  three: CameraControls.ACTION.TOUCH_TRUCK,
+}
+controls.maxDistance = distanceCadrage(RAYON_GLOBE * 1.3) * 2
+// Angle de depart actuel conserve (vue d'ensemble depuis un point fixe).
+controls.setLookAt(
+  ...new THREE.Vector3().setFromSphericalCoords(320, Math.PI / 2.4, 0.6).toArray(),
+  0, 0, 0,
+  false
+)
+
+export function appliquerCamera(delta = 0) {
+  return controls.update(delta) // booleen : la camera a-t-elle bouge (amorti en cours)
 }
 
 export function distance() {
-  return spherique.radius
+  return controls.distance
 }
 
-/**
- * Deplace progressivement la cible de la camera vers un point. `avancement`
- * va de 0 a 1 : l'appelant pilote la courbe d'animation, on ne fait qu'appliquer.
- */
-const cibleDepart = new THREE.Vector3()
-let cibleEnCours = false
-
-export function viserCible(point, avancement) {
-  if (!cibleEnCours) {
-    cibleDepart.copy(cible)
-    cibleEnCours = true
-  }
-  cible.lerpVectors(cibleDepart, new THREE.Vector3(point.x, point.y, point.z), avancement)
-  if (avancement >= 1) cibleEnCours = false
+export function reglerDistance(v) {
+  controls.dollyTo(v, false)
 }
 
-export function reglerDistance(valeur) {
-  spherique.radius = THREE.MathUtils.clamp(valeur, DISTANCE_MIN, DISTANCE_MAX)
+// Remplace l'ancien viserCible(point, avancement) : la cible est desormais la sphere du globe vise.
+export function viserCible(centre, rayon, animer = true) {
+  controls.minDistance = rayon * RATIO_MIN_DISTANCE // AVANT le fit : dollyTo clampe contre la borne courante
+  controls.normalizeRotations() // evite un rebobinage de N tours apres de longues orbites
+  return controls.fitToSphere(new THREE.Sphere(centre, rayon * MARGE_CADRAGE), animer)
 }
 
-/**
- * Branche les gestes. `crochets` permet a l'application de reprendre la main :
- * - `estGlisserNote(sx, sy)` -> true si l'appui a demarre sur une note a
- *   deplacer (mode edition) ; le pan est alors suspendu.
- * - `surGlisserNote(sx, sy)` -> appele pendant ce glisser.
- * - `surFinGlisserNote(aBouge)` -> fin du glisser.
- * - `surClic(sx, sy)` -> appui/relachement sans deplacement.
- * - `surSurvol(sx, sy)` -> mouvement simple, sans bouton.
- * - `surDoubleClicVide(sx, sy)` -> double-clic hors d'une note.
- * - `surClicDroit(sx, sy)` -> clic droit.
- */
+export function reglerVol(actif) {
+  controls.smoothTime = actif ? 0.2 : 0.35
+}
+
+// Remonte le globe au-dessus du HUD bas sous 560 px : le panneau + le HUD y
+// couvrent environ la moitie de l'ecran, sans decalage le globe serait a moitie cache.
+export function reglerDecalageMobile(rayon) {
+  const mobile = matchMedia('(max-width: 560px)').matches
+  controls.setFocalOffset(0, mobile ? -rayon * 0.3 : 0, 0, true) // signe a verifier a l'oeil (risque connu)
+}
+
+// --- Discrimination des gestes applicatifs ---------------------------------
+// Etat du pointeur actif ; un seul a la fois, le reste est laisse a camera-controls
+// (multi-touch : rotation a 1 doigt, dolly+pan a 2, gere en interne par la lib).
+let appui = null // { pointerId, bouton, x0, y0, aBouge, etiquetteId, glisseNote }
+
+function idEtiquette(cible) {
+  return cible.closest?.('.etiquette')?.dataset.id ?? null
+}
+
 export function brancherControles(element, crochets) {
-  let bouton = null
-  let depart = null
-  let aBouge = false
-  let glisseNote = false
+  // Nos ecouteurs D'ABORD, en phase capture pour pointerdown/wheel : la phase
+  // capture d'un ancetre precede toujours la phase cible/bulle de l'element
+  // (canvas ou etiquette), et l'ordre d'enregistrement couvre en plus le cas ou
+  // la cible est `element` lui-meme (capture et bulle s'y confondent en AT_TARGET).
+  element.addEventListener('pointerdown', (e) => surPointerDown(e, element, crochets), { capture: true })
+  // pointermove/pointerup/pointercancel/lostpointercapture n'ont pas besoin de la
+  // phase capture : setPointerCapture (Pointer Capture, pas event capture) retargete
+  // ces evenements vers `element`, qui les recoit avant que camera-controls (ecouteur
+  // sur `document`) ne les voie remonter.
+  element.addEventListener('pointermove', (e) => surPointerMove(e, crochets))
+  element.addEventListener('pointerup', (e) => surPointerFin(e, crochets))
+  element.addEventListener('pointercancel', (e) => surPointerFin(e, crochets))
+  element.addEventListener('lostpointercapture', (e) => surPointerFin(e, crochets))
+  element.addEventListener('contextmenu', surContextMenu)
+  element.addEventListener('dblclick', (e) => surDblClick(e, crochets))
+  // capture + non passive : doit pouvoir intercepter ctrl+molette avant camera-controls,
+  // qui ecoute aussi `element` en phase bulle et forcerait sinon ACTION.ZOOM (FOV).
+  element.addEventListener('wheel', surWheel, { capture: true, passive: false })
+  window.addEventListener('blur', surBlur)
 
-  element.addEventListener('contextmenu', (e) => {
-    e.preventDefault()
-    crochets.surClicDroit?.(e.clientX, e.clientY)
-  })
-
-  element.addEventListener('wheel', (e) => {
-    e.preventDefault()
-    reglerDistance(spherique.radius * (e.deltaY > 0 ? 1.12 : 0.89))
-    appliquerCamera()
-  }, { passive: false })
-
-  element.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return
-    bouton = e.button
-    depart = { x: e.clientX, y: e.clientY }
-    aBouge = false
-    glisseNote = crochets.estGlisserNote?.(e.clientX, e.clientY) === true
-    element.setPointerCapture(e.pointerId)
-  })
-
-  element.addEventListener('pointermove', (e) => {
-    if (bouton === null) {
-      crochets.surSurvol?.(e.clientX, e.clientY)
-      return
-    }
-
-    const dx = e.clientX - depart.x
-    const dy = e.clientY - depart.y
-    if (Math.hypot(dx, dy) > 4) aBouge = true
-    depart = { x: e.clientX, y: e.clientY }
-
-    if (glisseNote) {
-      crochets.surGlisserNote?.(e.clientX, e.clientY)
-    } else if (e.altKey) {
-      panoramiquer(dx, dy)
-    } else {
-      orbiter(dx, dy)
-    }
-    appliquerCamera()
-  })
-
-  element.addEventListener('pointerup', (e) => {
-    if (bouton === null) return
-    element.releasePointerCapture(e.pointerId)
-    if (glisseNote) crochets.surFinGlisserNote?.(aBouge)
-    else if (!aBouge) crochets.surClic?.(e.clientX, e.clientY)
-    bouton = null
-    glisseNote = false
-  })
-
-  element.addEventListener('dblclick', (e) => {
-    crochets.surDoubleClicVide?.(e.clientX, e.clientY)
-  })
+  // Puis controls.connect() : pose touch-action:none / user-select:none en CSSOM
+  // sur `element` (le HUD est hors de #scene, il garde son scroll et sa selection).
+  controls.connect(element)
 }
 
-function orbiter(dx, dy) {
-  spherique.theta -= dx * 0.005
-  spherique.phi = THREE.MathUtils.clamp(spherique.phi - dy * 0.005, 0.15, Math.PI - 0.15)
+function surPointerDown(e, element, crochets) {
+  if (appui) return // un pointeur deja actif : le second doigt appartient a camera-controls seul
+  const etiquetteId = idEtiquette(e.target) // lu AVANT que setPointerCapture ne retargete la cible
+  const glisseNote = e.button === 0 && crochets.estGlisserNote(e.clientX, e.clientY, etiquetteId)
+  if (glisseNote) controls.enabled = false // onPointerDown de camera-controls teste `!this._enabled` en 1re ligne
+  element.setPointerCapture(e.pointerId)
+  appui = { pointerId: e.pointerId, bouton: e.button, x0: e.clientX, y0: e.clientY, aBouge: false, etiquetteId, glisseNote }
 }
 
-function panoramiquer(dx, dy) {
-  // Deplacement dans le plan de l'ecran : on projette les axes de la camera.
-  const echelle = spherique.radius * 0.0018
-  const droite = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0)
-  const haut = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1)
-  cible.addScaledVector(droite, -dx * echelle)
-  cible.addScaledVector(haut, dy * echelle)
+function surPointerMove(e, crochets) {
+  if (!appui || e.buttons === 0) {
+    crochets.surSurvol(e.clientX, e.clientY, idEtiquette(e.target)) // l'app ne fait que poser survolDemande
+    return
+  }
+  if (e.pointerId !== appui.pointerId) return // pointeur d'un autre doigt : laisse a camera-controls
+  const seuil = e.pointerType === 'touch' ? SEUIL_TACTILE : SEUIL_SOURIS
+  appui.aBouge ||= Math.hypot(e.clientX - appui.x0, e.clientY - appui.y0) > seuil
+  if (appui.glisseNote) crochets.surGlisserNote(e.clientX, e.clientY)
+  // sinon rien : camera-controls tourne/pan via ses propres ecouteurs sur document
+}
+
+function surPointerFin(e, crochets) {
+  if (!appui || e.pointerId !== appui.pointerId) return
+  controls.enabled = true
+  const { bouton, aBouge, etiquetteId, glisseNote } = appui
+  appui = null
+  if (glisseNote) {
+    crochets.surFinGlisserNote(aBouge)
+    return
+  }
+  if (aBouge) return
+  // decision « clic droit immobile » prise ICI, jamais sur contextmenu (Windows
+  // l'emet apres pointerup, macOS/Linux a l'appui : pointerup est identique partout)
+  if (bouton === 0) crochets.surClic(e.clientX, e.clientY, etiquetteId)
+  else if (bouton === 2) crochets.surClicDroit(e.clientX, e.clientY, etiquetteId)
+}
+
+function surContextMenu(e) {
+  e.preventDefault() // systematique : camera-controls ne le fait plus lui-meme quand enabled=false
+}
+
+function surDblClick(e, crochets) {
+  crochets.surDoubleClicVide(e.clientX, e.clientY, idEtiquette(e.target)) // camera-controls n'ecoute pas dblclick
+}
+
+function surWheel(e) {
+  if (e.ctrlKey) {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+  }
+}
+
+function surBlur() {
+  // securite contre un relachement de bouton perdu (alt-tab pendant un glisser)
+  appui = null
+  controls.enabled = true
 }

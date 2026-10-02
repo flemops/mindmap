@@ -4,37 +4,59 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mindmap</title>
-<meta name="description" content="Mindmap fractale a navigation spatiale : chaque note contient ses propres notes, posees sur un globe.">
+<meta name="description" content="Mindmap fractale à navigation spatiale : chaque note contient ses propres notes, posées sur un globe.">
 <link rel="stylesheet" href="/static/style.css">
+<!-- Sans lien explicite, Chrome sonde /favicon.ico de son propre chef et
+     recoit un 404 (aucune route ne le sert) : lien explicite pour eviter
+     cette requete parasite plutot que de laisser faire un repli implicite. -->
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 </head>
 <body>
 <h1 class="hors-ecran">Mindmap</h1>
+<noscript><p class="panneau avis">Cette carte a besoin de JavaScript.</p></noscript>
 
-<div id="scene"></div>
+<!-- scene.js insère le canvas WebGL AVANT #etiquettes (ordre DOM, pas
+     z-index) : le calque des titres doit rester au-dessus du canvas. Il est
+     hors de l'arbre accessible (aria-hidden) car les mêmes titres sont déjà
+     exposés par #panneau-note et #liste-enfants, la voie clavier réelle. -->
+<div id="scene"><div id="etiquettes" aria-hidden="true"></div></div>
 
-<aside id="panneau-note" class="panneau" hidden aria-live="polite">
+<header id="hud-haut">
+  <nav id="fil-ariane" aria-label="Fil d'Ariane"><ol></ol></nav>
+  <form id="recherche" role="search">
+    <label for="champ-recherche" class="hors-ecran">Rechercher une note</label>
+    <input id="champ-recherche" type="search" role="combobox" aria-expanded="false" aria-controls="resultats" aria-autocomplete="list" autocomplete="off" placeholder="Rechercher   /">
+    <ul id="resultats" role="listbox" aria-label="Résultats de la recherche" hidden></ul>
+  </form>
+</header>
+
+<!-- Pas d'aria-live ici (trop verbeux à chaque ouverture) : #annonce s'en charge. -->
+<aside id="panneau-note" class="panneau" hidden aria-labelledby="titre-note">
   <div class="panneau-tete">
     <span class="hud-titre">NOTE</span>
-    <button id="bouton-fermer-note" aria-label="Revenir a la vue d'ensemble">&times;</button>
+    <button type="button" id="bouton-fermer-note" aria-label="Revenir à la vue d'ensemble">&times;</button>
   </div>
-  <h2 id="titre-note"></h2>
+  <h2 id="titre-note" tabindex="-1"></h2>
   <p id="contenu-note"></p>
+  <ul id="liste-enfants" class="liste-enfants" aria-label="Notes à l'intérieur"></ul>
   <div class="hud-ligne">
     <span id="compteur-notes" class="hud-compte"></span>
-    <button id="bouton-remonter" hidden>&larr; remonter</button>
+    <button type="button" id="bouton-remonter" hidden>&larr; remonter</button>
   </div>
 </aside>
 
-<div id="fil-ariane" class="panneau" aria-live="polite"></div>
+<p id="annonce" class="hors-ecran" aria-live="polite"></p>
 
 <div id="astuce" class="panneau" hidden>
-  molette : zoom &middot; glisser : orbiter &middot; alt+glisser : deplacer la vue<br>
-  clic : ouvrir &middot; clic droit : editer &middot; double-clic : creer &middot; glisser une note : la deplacer
+  molette : zoom &middot; glisser : orbiter &middot; clic droit + glisser : déplacer la vue<br>
+  clic : ouvrir &middot; clic droit : éditer &middot; double-clic : créer &middot; glisser une note : la déplacer &middot; / : rechercher
 </div>
 
-<form id="panneau-edition" class="panneau" hidden>
-  <div class="hud-titre">EDITION</div>
+<form id="panneau-edition" class="panneau" hidden aria-labelledby="titre-edition">
+  <div id="titre-edition" class="hud-titre">ÉDITION</div>
+  <label for="champ-titre" class="hors-ecran">Titre</label>
   <input id="champ-titre" type="text" placeholder="Titre" required maxlength="120">
+  <label for="champ-contenu" class="hors-ecran">Contenu</label>
   <textarea id="champ-contenu" placeholder="Contenu"></textarea>
   <div class="rangee-boutons">
     <button type="button" id="bouton-supprimer" class="danger">Supprimer</button>

@@ -87,62 +87,61 @@ if (isNewDb) {
   seed()
 }
 
+// Données d'exemple, posées une seule fois, quand la base n'existe pas encore.
+// x = longitude (-180..180), y = latitude (-60..60). Les six racines sont
+// réparties autour du globe ; les filles d'une même note sont écartées d'au
+// moins 70° de longitude pour ne pas se chevaucher.
 function seed() {
-  const bienvenue = createNote({
-    parent_id: null,
-    titre: 'Bienvenue',
-    contenu:
-      "Chaque note est posee sur un globe et contient ses propres notes. Cliquez une note pour entrer dedans.",
-    x: 20,
-    y: 12,
-  })
-  const comment = createNote({
-    parent_id: bienvenue.id,
-    titre: 'Comment ca marche',
-    contenu: 'Un clic entre dans une note et revele ses notes filles. Le bouton remonter revient au niveau precedent.',
-    x: -55,
-    y: 28,
-  })
-  createNote({
-    parent_id: comment.id,
-    titre: 'Naviguer',
-    contenu: 'Molette : zoom. Glisser : deplacer la vue. Alt + glisser : orbiter autour du globe.',
-    x: -30,
-    y: 20,
-  })
-  createNote({
-    parent_id: comment.id,
-    titre: 'Structure',
-    contenu: 'Chaque note porte une longitude et une latitude : sa place sur le globe de sa note parente.',
-    x: 70,
-    y: -18,
-  })
-  const projets = createNote({
-    parent_id: bienvenue.id,
-    titre: 'Projets',
-    contenu: 'Une selection de projets, organises en sous-notes.',
-    x: 110,
-    y: -22,
-  })
-  createNote({
-    parent_id: projets.id,
-    titre: 'Portfolio',
-    contenu: 'hamdy-tabsissi.com - Express, EJS, canvas 2D, auto-heberge.',
-    x: -40,
-    y: 30,
-  })
-  createNote({
-    parent_id: projets.id,
-    titre: 'EventMap',
-    contenu: "Carte culturelle d'evenements franciliens, FastAPI + Leaflet.",
-    x: 60,
-    y: -30,
-  })
-  createNote({
-    parent_id: bienvenue.id,
-    titre: 'A propos',
-    contenu: 'Cette mindmap est une piece de portfolio : Three.js, sans librairie de mind-map.',
-    x: -150,
-    y: -35,
-  })
+  const poser = (parent_id, titre, contenu, x, y) =>
+    createNote({ parent_id, titre, contenu, x, y })
+
+  const bienvenue = poser(null, 'Bienvenue',
+    "Chaque note est posée sur un globe et contient ses propres notes. Cliquez une note pour l'ouvrir.", 0, 25)
+  poser(bienvenue.id, 'Naviguer',
+    'Molette : zoom. Glisser : orbiter. Clic droit + glisser : déplacer la vue. Clic : ouvrir une note.', -90, 15)
+  poser(bienvenue.id, 'Rechercher',
+    'La touche « / » ouvre la recherche. Entrée vole vers la note trouvée, Échap ferme.', 90, -15)
+
+  const comment = poser(null, 'Comment ça marche',
+    'Le principe en trois notes : la structure des données, la navigation dans un seul monde, la séparation lecture / écriture.', 60, -20)
+  poser(comment.id, 'Structure',
+    'Chaque note porte une longitude et une latitude : sa place sur le globe de sa note parente. Une seule table SQLite récursive : notes(id, parent_id).', -120, 20)
+  poser(comment.id, 'Un seul monde',
+    'Ouvrir une note fait apparaître ses filles autour d\'elle, dans le même espace. Le niveau précédent reste visible.', 0, -25)
+  poser(comment.id, 'Lecture et écriture',
+    'La lecture est publique. /edit et /api/write sont protégés par Cloudflare Access : le serveur n\'a aucune logique de mot de passe.', 120, 10)
+
+  const projets = poser(null, 'Projets',
+    'Une sélection de projets, chacun détaillé dans une sous-note.', 120, 10)
+  poser(projets.id, 'Portfolio',
+    'hamdy-tabsissi.com — Node/Express, EJS, node:sqlite, nginx et tunnel cloudflared, auto-hébergé sur une VM Oracle.', -120, -15)
+  poser(projets.id, 'EventMap',
+    "eventmap.hamdy-tabsissi.com — carte d'événements culturels franciliens. FastAPI/Python, Leaflet, SQLite.", 0, 25)
+  poser(projets.id, 'Observatory',
+    "Service d'observation des agents et de l'infra, dépôt flemops/observatory, derrière Cloudflare Access.", 120, -20)
+
+  const securite = poser(null, 'Sécurité',
+    'Trois piliers : Cloudflare Access en amont, une CSP stricte, des sauvegardes testées.', 180, -25)
+  poser(securite.id, 'Cloudflare Access',
+    "Authentification en amont, avec une path-policy sur /edit et /api/write. L'origine n'est joignable que par le tunnel.", -120, 10)
+  poser(securite.id, 'CSP stricte',
+    "script-src 'self', aucun asset distant. Three.js et ses addons sont vendorés dans public/vendor/.", 0, -20)
+  poser(securite.id, 'Sauvegardes',
+    'Litestream + restic vers Cloudflare R2, restauration testée. CrowdSec tourne sur la VM.', 120, 25)
+
+  const infra = poser(null, 'Infra',
+    'Tout tourne sur une VM Oracle, exposée uniquement à travers un tunnel Cloudflare.', -120, 20)
+  poser(infra.id, 'VM Oracle',
+    "ARM, Ubuntu, services systemd. Elle n'écoute que sur 127.0.0.1.", -120, 25)
+  poser(infra.id, 'Tunnel cloudflared',
+    'Aucun port ouvert : tout passe par Cloudflare.', 0, -15)
+  poser(infra.id, 'n8n et Guacamole',
+    'Automatisations n8n ; accès RDP dans le navigateur via Guacamole. Tous deux derrière Access.', 120, 15)
+
+  const apropos = poser(null, 'À propos',
+    "Ce qu'est cette carte, et qui l'a faite.", -60, -10)
+  poser(apropos.id, 'Pièce de portfolio',
+    'Mindmap fractale à navigation spatiale : Three.js, un globe par note, aucune librairie de mind-map.', -90, -20)
+  poser(apropos.id, 'Auteur',
+    'Hamdy Tabsissi, développeur. Cette carte est le pendant visuel du portfolio.', 90, 20)
 }

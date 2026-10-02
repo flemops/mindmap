@@ -117,22 +117,20 @@ app.delete('/api/write/notes/:id', (req, res) => {
 
 // --- Pages -------------------------------------------------------------
 
+// Vendor monte AVANT /static : le dossier porte sa version dans son nom
+// (three-0.185.1, camera-controls-3.1.2), une montee de version = un nouveau
+// dossier -- l'ancien n'est jamais reecrit en place -- donc `immutable` est sur.
+app.use(
+  '/static/vendor',
+  express.static(join(__dirname, 'public', 'vendor'), { maxAge: '7d', immutable: true })
+)
+
 // `maxAge: 0` + ETag : le navigateur revalide a chaque chargement et recoit un
-// 304 tant que le fichier n'a pas bouge. Sur trois fichiers, cela coute moins
-// qu'un schema de versionnage d'URL -- et surtout, cela evite le piege
+// 304 tant que le fichier n'a pas bouge. Sur les fichiers de public/, cela coute
+// moins qu'un schema de versionnage d'URL -- et surtout, cela evite le piege
 // classique : un asset modifie mais servi depuis le cache, qui fait croire
 // qu'un correctif n'a pas pris.
 app.use('/static', express.static(join(__dirname, 'public'), { maxAge: 0, etag: true }))
-
-// Three.js est servi depuis node_modules plutot que recopie dans le depot :
-// la version reste pilotee par package-lock.json, et rien n'est charge depuis
-// un CDN -- la CSP `script-src 'self'` l'interdit de toute facon.
-// `three.module.min.js` importe `./three.core.min.js` : les deux vivent dans
-// ce meme dossier, ce montage suffit donc.
-app.use(
-  '/vendor',
-  express.static(join(__dirname, 'node_modules', 'three', 'build'), { maxAge: '7d', immutable: true })
-)
 
 app.get('/edit', (req, res) => {
   res.sendFile(join(__dirname, 'public', 'index.html'))
