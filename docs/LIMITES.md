@@ -1,40 +1,58 @@
 # Limites connues
 
-Limites relevées à la livraison du rendu Three.js (PR #2). Elles sont
-documentées ici plutôt que masquées ; aucune n'est une régression.
+Limites du rendu Three.js (PR #2), documentées ici plutôt que masquées.
+Vérifiées en production le 03/10/2026 sur mindmap.hamdy-tabsissi.com, dans un
+Chrome de bureau (fenêtre 1536 × 639, écran 144 Hz).
 
 ## Clic sur une étiquette occultée
 
-Une étiquette passée derrière le globe (`etiquette--derriere`) reste cliquable,
-mais le clic peut manquer la bille 3D sous-jacente selon la longitude/latitude
-de la note, l'angle de caméra étant fixe après `fitToSphere`.
+Une étiquette passée derrière le globe (`etiquette--derriere`, opacité 0,15)
+ne répond pas au clic : l'angle de caméra est fixe après `fitToSphere` et le
+clic manque la bille 3D sous-jacente.
 
-Chemin fiable : la liste des notes filles dans le panneau latéral, ou la
-recherche (`/`).
+Vérifié en production : depuis « Bienvenue », un clic sur les étiquettes
+occultées « A propos » et « Comment ca marche » ne fait rien (2 essais sur 2).
+
+Chemin fiable : la liste des notes filles dans le panneau latéral (vérifiée :
+elle ouvre bien « A propos »), ou la recherche (`/`).
 
 ## Échap en toute fin de vol multi-niveaux
 
 Pendant le dernier pas d'un vol multi-niveaux (animation encore en cours),
 Échap est absorbé sans effet visible. Un second Échap, une fois la transition
-posée (environ 250 ms plus tard), remonte bien d'un niveau.
+posée, remonte bien d'un niveau.
+
+Vérifié en production sur le vol Racine → Bienvenue → Comment ca marche →
+Structure : Échap envoyé à l'arrivée sur « Structure » sans effet, second Échap
+700 ms plus tard remonte à « Comment ca marche ».
 
 Comportement voulu (arrêt propre en fin de pas), pas un piège clavier.
 
 ## Performance
 
-37 à 46 images par seconde mesurées en Chrome headless piloté par Playwright,
-avec rotation souris synthétique continue. Cette méthode ajoute un surcoût qui
-ne représente pas un usage réel : la fluidité n'a pas été mesurée dans un
-navigateur non automatisé.
+Au repos : 144 images par seconde. Pendant un vol multi-niveaux : environ
+39 images par seconde, pire écart entre deux images 50 ms. La chute pendant les
+transitions est réelle dans un navigateur non automatisé ; elle n'a été mesurée
+que sur une seule machine.
+
+## Fil d'Ariane tronqué
+
+À quatre niveaux de profondeur, le dernier élément du fil d'Ariane est coupé
+(« STRUC » au lieu de « STRUCTURE ») à 1536 px de large.
+
+## Mobile
+
+Le rendu à 390 px n'a pas été revérifié en production : seules les captures
+Playwright de `docs/captures/` (base d'exemple, en local) en attestent.
 
 ## Densité d'étiquettes
 
-La cible de 30 étiquettes visibles en même temps n'a pas pu être vérifiée : les
-données d'exemple comptent 22 notes, soit 4 à 7 étiquettes visibles selon le
-niveau ouvert. Le comportement au-delà n'est pas testé.
+La cible de 30 étiquettes visibles en même temps n'a pas pu être vérifiée : la
+base de production compte 8 notes, les données d'exemple 22. Le comportement
+au-delà n'est pas testé.
 
 ## Données d'exemple et production
 
-`seed()` ne s'exécute que sur une base neuve. Une base existante (la
-production) n'est jamais réécrite : elle ne reçoit donc pas les six notes
-racine, et son contenu diffère des captures de `docs/captures/`.
+`seed()` ne s'exécute que sur une base neuve. La base de production n'est pas
+réécrite : elle garde une seule note racine (« Bienvenue ») et son contenu
+diffère des captures de `docs/captures/`, qui montrent les six racines.
