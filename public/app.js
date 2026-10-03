@@ -44,6 +44,9 @@ const resultats = document.getElementById('resultats')
 const panneauNote = document.getElementById('panneau-note')
 const hudHaut = document.getElementById('hud-haut')
 const boutonFermerNote = document.getElementById('bouton-fermer-note')
+const boutonReplier = document.getElementById('bouton-replier')
+const aide = document.getElementById('aide')
+const boutonFermerAide = document.getElementById('bouton-fermer-aide')
 const titreNote = document.getElementById('titre-note')
 const contenuNote = document.getElementById('contenu-note')
 const listeEnfants = document.getElementById('liste-enfants')
@@ -68,6 +71,24 @@ let noteEnDeplacement = null
 let editionNoteId = null
 let positionNouvelleNote = null
 let survolDemande = null // {x, y, etiquetteId} : un seul raycast par frame, resolu dans la boucle
+let noteRepliee = false // choix du visiteur sur petit ecran, garde d'une note a l'autre
+
+// Aide de premiere visite : vue une fois (note ouverte ou aide fermee), plus
+// jamais affichee. localStorage peut etre absent ou refuse (navigation privee,
+// stockage bloque) : l'aide reapparait alors a chaque visite, sans erreur.
+const CLE_AIDE = 'mindmap.aide-vue'
+let aideVue = enEdition // /edit a deja son propre memo (#astuce)
+try {
+  aideVue ||= localStorage.getItem(CLE_AIDE) === '1'
+} catch {}
+
+function retenirAide() {
+  if (aideVue) return
+  aideVue = true
+  try {
+    localStorage.setItem(CLE_AIDE, '1')
+  } catch {}
+}
 
 const cacheEnfants = new Map() // Map<id|null, note[]> : reponses /api/notes/:id, videe a chaque ecriture
 
@@ -167,7 +188,7 @@ async function naviguerVers(cibleId, cheminIds) {
       await entrer(id, ms)
     }
   } catch (erreur) {
-    signalerErreur("Cette note n'a pas pu etre ouverte.", erreur)
+    signalerErreur("Cette note n'a pas pu être ouverte.", erreur)
   } finally {
     reglerVol(false)
     enTransition = false
@@ -270,6 +291,9 @@ function majHud() {
   filArianeOl.scrollLeft = filArianeOl.scrollWidth
 
   const seraCachee = ouverteId === null
+  // Ouvrir une note, c'est avoir compris le geste : l'aide ne revient plus.
+  if (!seraCachee) retenirAide()
+  aide.hidden = !seraCachee || aideVue
   // Focus rendu AVANT de masquer un panneau qui le contient : sinon le focus
   // tombe dans le vide (aucun element suivant a activer au clavier).
   if (seraCachee && !panneauNote.hidden && panneauNote.contains(document.activeElement)) focusFilAriane()
@@ -283,24 +307,25 @@ function majHud() {
   contenuNote.textContent = note.contenu || '(pas de contenu)'
   listeEnfants.textContent = ''
   for (const n of filles) listeEnfants.appendChild(ligneBouton(n.note.id, n.note.titre))
-  compteur.textContent = `${filles.length} note${filles.length > 1 ? 's' : ''} a l'interieur`
+  compteur.textContent = compterNotes(filles.length)
 }
+
+const compterNotes = (n) => `${n} note${n > 1 ? 's' : ''} à l'intérieur`
 
 function annoncer() {
   if (ouverteId === null) {
-    annonce.textContent = 'Vue d ensemble'
+    annonce.textContent = "Vue d'ensemble"
     return
   }
   const note = noeud(ouverteId).note
-  const n = enfantsDe(ouverteId).length
-  annonce.textContent = `Note ouverte : ${note.titre}, ${n} note${n > 1 ? 's' : ''} a l interieur`
+  annonce.textContent = `Note ouverte : ${note.titre}, ${compterNotes(enfantsDe(ouverteId).length)}`
 }
 
 /** Un echec doit se voir : sinon la page reste noire ou inerte sans explication. */
 function signalerErreur(message, erreur) {
   console.error(message, erreur)
   titreNote.textContent = 'Erreur'
-  contenuNote.textContent = `${message} Rechargez la page pour reessayer.`
+  contenuNote.textContent = `${message} Rechargez la page pour réessayer.`
   compteur.textContent = ''
   listeEnfants.textContent = ''
   panneauNote.hidden = false
@@ -320,6 +345,23 @@ listeEnfants.addEventListener('click', (e) => {
   if (bouton) naviguerVers(Number(bouton.dataset.id))
 })
 boutonFermerNote.addEventListener('click', () => naviguerVers(null))
+boutonReplier.addEventListener('click', () => {
+  noteRepliee = !noteRepliee
+  appliquerRepli()
+  if (ouverteId !== null) decaler(sphereDe(ouverteId).rayon, true) // le panneau a change de hauteur
+})
+boutonFermerAide.addEventListener('click', () => {
+  retenirAide()
+  if (aide.contains(document.activeElement)) focusFilAriane()
+  aide.hidden = true
+})
+
+function appliquerRepli() {
+  panneauNote.classList.toggle('panneau--replie', noteRepliee)
+  boutonReplier.setAttribute('aria-expanded', String(!noteRepliee))
+  boutonReplier.setAttribute('aria-label', noteRepliee ? 'Afficher la note' : 'Réduire la note')
+  boutonReplier.textContent = noteRepliee ? '▴' : '▾'
+}
 boutonRemonter.addEventListener('click', () => {
   if (ouverteId !== null) naviguerVers(noeud(ouverteId).parentId)
 })
@@ -482,7 +524,20 @@ attacher(conteneur)
 redimensionner()
 brancherControles(conteneur, crochets)
 viserCible(sphereDe(null).centre, sphereDe(null).rayon, false)
-window.addEventListener('resize', redimensionner)
+window.addEventListener('resize', () => {
+  redimensionner()
+  // Le HUD a pu passer en bas (ou en sortir) et le panneau changer de hauteur :
+  // sans ceci, le globe gardait jusqu'a la navigation suivante un decalage faux.
+  decaler(sphereDe(ouverteId).rayon, true)
+})
+// Portrait <-> paysage : le cadrage depend du champ horizontal (distanceCadrage),
+// on recadre le globe ouvert. Pas a chaque resize : un simple redimensionnement
+// de fenetre ne doit pas annuler le zoom que le visiteur a choisi.
+matchMedia('(orientation: portrait)').addEventListener('change', () => {
+  const { centre, rayon } = sphereDe(ouverteId)
+  viserCible(centre, rayon, true)
+  decaler(rayon, true) // APRES : fitToSphere remet le decalage vertical a zero
+})
 requestAnimationFrame(boucle)
 
 async function demarrer() {
@@ -496,7 +551,7 @@ async function demarrer() {
     // reseau mobile les livrerait apres la fin du vol. Un echec se rejoue a l'ouverture.
     for (const note of enfants) chargerEnfants(note.id).catch(() => {})
   } catch (erreur) {
-    signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
+    signalerErreur("Les notes n'ont pas pu être chargées.", erreur)
   } finally {
     majHud()
     decaler(sphereDe(null).rayon, false)

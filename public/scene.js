@@ -47,10 +47,12 @@ const K_COEUR = 2.0
 // distance (fov 50, paysage), proche du cadrage historique.
 const MARGE_CADRAGE = 1.3
 
-// Opacite des fils de grille. .13 / .035 (au lieu de .18 / .06) : le globe reste
-// lisible comme support, mais ses courbes ne passent plus devant les titres.
+// Opacite des fils de grille. .13 (au lieu de .18) : le globe reste lisible comme
+// support, mais ses courbes ne passent plus devant les titres. Le globe parent,
+// proche de la camera, couvre tout l'ecran de grands arcs : .022 (au lieu de
+// .06 puis .035) le garde comme simple repere de profondeur.
 const GRILLE_OUVERTE = 0.13
-const GRILLE_PARENT = 0.035
+const GRILLE_PARENT = 0.022
 
 const AMBRE = new THREE.Color(COULEURS.ambre)
 const FOND = new THREE.Color(COULEURS.fond)
@@ -680,11 +682,15 @@ const CIBLES = {
   // titres (.78 dessinait des rayons plus presents que le texte).
   enfant: { k: K_COEUR, echelle: 1, halo: 0, trait: 0.5, classe: 'etiquette--enfant', visible: true },
   petit: { k: 0.6, echelle: 1, halo: 0, trait: 0.2, classe: 'etiquette--petit', visible: true },
-  // Freres et ancetres : proches de la camera, ce sont de grands disques ; a k .3
-  // ils formaient des taches ocre plus visibles que la note ouverte. Ils restent
+  // Freres : proches de la camera, ce sont de grands disques ; a k .3 ils
+  // formaient des taches ocre plus visibles que la note ouverte. Ils restent
   // cliquables et leur titre apparait toujours au survol.
   voisin: { k: 0.2, echelle: 1, halo: 0, trait: 0.1, classe: 'etiquette--cachee', visible: true },
-  ancetre: { k: 0.1, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: true },
+  // Ancetres : leur bille est au centre du globe parent, souvent juste derriere
+  // la camera, d'ou un disque geant meme assombri. Elle s'eteint (k 0) puis est
+  // masquee au repos (`bille: false`) ; l'ancre reste visible car elle porte tout
+  // le sous-arbre. On y remonte par le fil d'Ariane, « remonter » ou Echap.
+  ancetre: { k: 0, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: true, bille: false },
   cache: { k: 0, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: false },
 }
 const CLASSES_TIER = ['etiquette--ouverte', 'etiquette--enfant', 'etiquette--petit', 'etiquette--cachee']
@@ -784,8 +790,9 @@ export function appliquerEtat(depuisId, versId, p) {
     if (p === 1 && depuisId !== versId) n.taille = null
 
     n.ancre.visible = p < 1 ? A.visible || B.visible : B.visible
+    n.bille.visible = p < 1 ? A.bille !== false || B.bille !== false : B.bille !== false
     n.role = p < 1 ? (B.visible ? roleB : roleA) : roleB
-    if (n.ancre.visible && n.role !== 'cache' && n.role !== 'ouverte') cliquables.push(n.bille)
+    if (n.ancre.visible && n.bille.visible && n.role !== 'cache' && n.role !== 'ouverte') cliquables.push(n.bille)
   }
   billesCliquables = cliquables
 

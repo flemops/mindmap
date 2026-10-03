@@ -84,12 +84,18 @@ html, body {
 }
 .etiquette--ouverte { font-size: 1.1rem; font-weight: 600; color: var(--ambre); }
 .etiquette--enfant { font-size: .85rem; font-weight: 500; }
-.etiquette--petit { font-size: .72rem; font-weight: 400; opacity: .8; color: var(--attenue); }
+/* Petite-fille : la hierarchie passe par la taille et la couleur attenuee, pas
+   par l'opacite (a .8, ~4.7:1 seulement sur le fond pour un texte de 10 px). */
+.etiquette--petit { font-size: .72rem; font-weight: 400; color: var(--attenue); }
 .etiquette--survol { color: var(--ambre); opacity: 1; }
 /* Dos du globe : attenuee mais lisible et cliquable. Le CSS2DRenderer empile les
    etiquettes par distance : une etiquette de face reste au-dessus et prime ;
-   celle qui en recouvrirait une autre est masquee par `etiquette--genee`. */
+   celle qui en recouvrirait une autre est masquee par `etiquette--genee`.
+   Une fille reste une cible de navigation de premier rang : .6 (~6:1) la garde
+   lisible quand ses soeurs l'encadrent tout autour du globe ; une petite-fille
+   du dos reste en retrait. */
 .etiquette.etiquette--derriere { opacity: .32; }
+.etiquette.etiquette--enfant.etiquette--derriere { opacity: .6; }
 .etiquette.etiquette--derriere.etiquette--survol { opacity: 1; }
 /* Collision (scene.js#majEtiquettesGenees) : l'etiquette qui en recouvre une plus
    prioritaire s'efface. Une fille reste devinable ; une petite-fille ou une
@@ -277,7 +283,10 @@ button.danger:hover { border-color: var(--ambre); color: var(--ambre); }
   max-height: calc(100vh - 6rem);
   overflow-y: auto;
 }
-#bouton-fermer-note { min-height: 32px; min-width: 32px; padding: 0; font-size: 1rem; line-height: 1; }
+.panneau-actions { display: flex; gap: .35rem; }
+#bouton-fermer-note, #bouton-replier, #bouton-fermer-aide { min-height: 32px; min-width: 32px; padding: 0; font-size: 1rem; line-height: 1; }
+/* Utile seulement quand le panneau est empile en bas (voir le bloc mobile). */
+#bouton-replier { display: none; }
 
 .liste-enfants {
   list-style: none;
@@ -290,6 +299,15 @@ button.danger:hover { border-color: var(--ambre); color: var(--ambre); }
 .liste-enfants button { min-height: 32px; font-size: .72rem; }
 
 #astuce { left: 1rem; bottom: 1rem; font-size: .68rem; color: var(--attenue); line-height: 1.7; }
+
+/* Aide de premiere visite : meme coin que #astuce (reserve a /edit), loin du globe. */
+#aide { left: 1rem; bottom: 1rem; width: min(320px, calc(100vw - 2rem)); }
+.aide-texte { margin: .35rem 0 0; font-size: .75rem; line-height: 1.6; color: var(--texte); }
+.aide-tactile { display: none; }
+@media (pointer: coarse) {
+  .aide-souris { display: none; }
+  .aide-tactile { display: block; }
+}
 
 /* --- Panneau edition ------------------------------------------------------ */
 
@@ -342,6 +360,14 @@ button.danger:hover { border-color: var(--ambre); color: var(--ambre); }
      boutons/champ + gaps/paddings) ; 38vh (amendement D) plutot que 40vh
      pour laisser un peu plus de globe visible au-dessus. */
   #panneau-note { top: auto; bottom: 7.25rem; left: .5rem; right: .5rem; width: auto; max-height: 38vh; }
+  /* Replie : titre seul (~90 px au lieu de 220 a 275) ; la scene reprend la
+     place, app.js recentre le globe. Navigation intacte : billes, fil d'Ariane,
+     recherche, Echap. */
+  #bouton-replier { display: inline-block; }
+  #panneau-note.panneau--replie #corps-note { display: none; }
+  #panneau-note.panneau--replie #titre-note { margin-bottom: 0; }
+  /* En haut : le HUD occupe deja le bas, et le globe est centre entre les deux. */
+  #aide { top: .5rem; bottom: auto; left: .5rem; right: .5rem; width: auto; }
   #astuce { display: none; }
   #panneau-edition { left: .5rem; right: .5rem; bottom: .5rem; width: auto; z-index: 40; }
 }
