@@ -61,8 +61,27 @@ PR #3, le globe est centré dans la zone libre au-dessus du panneau (vérifié s
 Le décalage du globe n'est recalculé qu'à la navigation : après une rotation de
 l'écran, il faut ouvrir une note pour le recaler.
 
-Non vérifié : un vrai téléphone, les gestes tactiles (pincer, glisser) et la
-fluidité sur mobile.
+## Taps sur téléphone
+
+Retour de test sur un vrai téléphone (03/10/2026) : les taps marchaient mal.
+Reproduit en Chrome headless (390 × 844, densité 3, vrais événements tactiles)
+puis corrigé par les PR #4 et #5 :
+
+- une bille fait 6 à 10 px de diamètre sur téléphone ; un tap décalé de 8 px ne
+  faisait rien. Un tap qui manque une bille retient désormais la fille ou
+  petite-fille la plus proche à 22 px près (6 px à la souris) ;
+- la caméra faisait un second balayage après le vol, pendant lequel un tap
+  ratait sa cible. Les filles des notes de premier niveau sont préchargées et la
+  réorientation se fait en plein vol : un seul mouvement, vue immobile vers 2 s
+  après le tap, y compris avec 300 ms de latence simulée ;
+- l'étiquette de la note ouverte n'intercepte plus le tap destiné à la bille
+  qu'elle recouvre.
+
+Vérifié en production après déploiement : 17 taps sur 17 (bille au centre,
+décalée de 8 à 15 px, étiquette, petites-filles), contre 12 sur 17 avant.
+
+Non vérifié : un vrai téléphone après correctif, les gestes pincer et glisser,
+la fluidité réelle sur mobile.
 
 ## Densité d'étiquettes
 
