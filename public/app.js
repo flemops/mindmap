@@ -114,8 +114,13 @@ function invaliderCache() {
 
 // --- Boucle de rendu ---------------------------------------------------------
 
-function resoudreNote(sx, sy, etiquetteId) {
-  return etiquetteId !== null ? (noeud(Number(etiquetteId))?.note ?? null) : noteSousPointeur(sx, sy)
+// Tolerance de visee (px) autour d'une bille que le rayon manque, selon le
+// pointeur : un doigt couvre bien plus que les 6 a 10 px d'une bille sur telephone.
+const TOLERANCE_VISEE = { touch: 22, pen: 8, mouse: 6 }
+
+function resoudreNote(sx, sy, etiquetteId, typePointeur = 'mouse') {
+  if (etiquetteId !== null) return noeud(Number(etiquetteId))?.note ?? null
+  return noteSousPointeur(sx, sy, TOLERANCE_VISEE[typePointeur] ?? TOLERANCE_VISEE.mouse)
 }
 
 function traiterSurvol({ x, y, etiquetteId }) {
@@ -181,11 +186,15 @@ async function entrer(id, ms) {
   orienter(id, ms > 0) // filles deja connues : face camera ; sinon, au moins dos au parent
   const depuis = ouverteId
   ouverteId = id
+  // Filles inconnues au depart : on se reoriente des leur arrivee, en plein vol
+  // (camera-controls enchaine sans a-coup). Attendre la fin du tween donnait un
+  // second balayage une fois le vol fini, pendant lequel un tap ratait sa cible.
+  // Le rejet est signale par le Promise.all ci-dessous, pas ici.
+  pEnfants?.then(() => { if (ouverteId === id) orienter(id, ms > 0) }, () => {})
   majHud() // fil d'ariane et panneau immediats, la scene suit
   decaler(rayon, ms > 0) // APRES majHud : le decalage depend de la hauteur du panneau
   await Promise.all([tween(ms, (p) => appliquerEtat(depuis, id, p)), pEnfants])
   appliquerEtat(id, id, 1) // verrouille les visible=false, pose les roles des filles arrivees
-  if (pEnfants && ouverteId === id) orienter(id, ms > 0) // filles arrivees pendant le tween
   annoncer()
   precharger(id)
 }
@@ -318,9 +327,9 @@ boutonRemonter.addEventListener('click', () => {
 // --- Gestes (crochets de controls.js) ---------------------------------------
 
 const crochets = {
-  estGlisserNote(sx, sy, etiquetteId) {
+  estGlisserNote(sx, sy, etiquetteId, typePointeur) {
     if (!enEdition) return false
-    const note = resoudreNote(sx, sy, etiquetteId)
+    const note = resoudreNote(sx, sy, etiquetteId, typePointeur)
     if (!note) return false
     noteEnDeplacement = note
     return true
@@ -348,8 +357,11 @@ const crochets = {
     }
   },
 
-  surClic(sx, sy, etiquetteId) {
-    const note = resoudreNote(sx, sy, etiquetteId)
+  surClic(sx, sy, etiquetteId, typePointeur) {
+    // L'etiquette de la note ouverte ne mene nulle part (on y est deja) et, en
+    // gros caracteres, recouvre parfois la bille d'une fille : on vise dessous.
+    if (etiquetteId !== null && Number(etiquetteId) === ouverteId) etiquetteId = null
+    const note = resoudreNote(sx, sy, etiquetteId, typePointeur)
     if (note) naviguerVers(note.id)
   },
 

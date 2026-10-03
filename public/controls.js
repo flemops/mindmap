@@ -102,7 +102,7 @@ export function reglerDecalage(rayon, basLibre = innerHeight, animer = true) {
 // --- Discrimination des gestes applicatifs ---------------------------------
 // Etat du pointeur actif ; un seul a la fois, le reste est laisse a camera-controls
 // (multi-touch : rotation a 1 doigt, dolly+pan a 2, gere en interne par la lib).
-let appui = null // { pointerId, bouton, x0, y0, aBouge, etiquetteId, glisseNote }
+let appui = null // { pointerId, type, bouton, x0, y0, aBouge, etiquetteId, glisseNote }
 
 function idEtiquette(cible) {
   return cible.closest?.('.etiquette')?.dataset.id ?? null
@@ -137,10 +137,10 @@ export function brancherControles(element, crochets) {
 function surPointerDown(e, element, crochets) {
   if (appui) return // un pointeur deja actif : le second doigt appartient a camera-controls seul
   const etiquetteId = idEtiquette(e.target) // lu AVANT que setPointerCapture ne retargete la cible
-  const glisseNote = e.button === 0 && crochets.estGlisserNote(e.clientX, e.clientY, etiquetteId)
+  const glisseNote = e.button === 0 && crochets.estGlisserNote(e.clientX, e.clientY, etiquetteId, e.pointerType)
   if (glisseNote) controls.enabled = false // onPointerDown de camera-controls teste `!this._enabled` en 1re ligne
   element.setPointerCapture(e.pointerId)
-  appui = { pointerId: e.pointerId, bouton: e.button, x0: e.clientX, y0: e.clientY, aBouge: false, etiquetteId, glisseNote }
+  appui = { pointerId: e.pointerId, type: e.pointerType, bouton: e.button, x0: e.clientX, y0: e.clientY, aBouge: false, etiquetteId, glisseNote }
 }
 
 function surPointerMove(e, crochets) {
@@ -158,7 +158,7 @@ function surPointerMove(e, crochets) {
 function surPointerFin(e, crochets) {
   if (!appui || e.pointerId !== appui.pointerId) return
   controls.enabled = true
-  const { bouton, aBouge, etiquetteId, glisseNote } = appui
+  const { type, bouton, aBouge, etiquetteId, glisseNote } = appui
   appui = null
   if (glisseNote) {
     crochets.surFinGlisserNote(aBouge)
@@ -167,7 +167,7 @@ function surPointerFin(e, crochets) {
   if (aBouge) return
   // decision « clic droit immobile » prise ICI, jamais sur contextmenu (Windows
   // l'emet apres pointerup, macOS/Linux a l'appui : pointerup est identique partout)
-  if (bouton === 0) crochets.surClic(e.clientX, e.clientY, etiquetteId)
+  if (bouton === 0) crochets.surClic(e.clientX, e.clientY, etiquetteId, type)
   else if (bouton === 2) crochets.surClicDroit(e.clientX, e.clientY, etiquetteId)
 }
 

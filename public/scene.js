@@ -841,11 +841,39 @@ function preparerRaycast(sx, sy) {
   raycaster.setFromCamera(new THREE.Vector2((sx / innerWidth) * 2 - 1, -(sy / innerHeight) * 2 + 1), camera)
 }
 
-/** Note cliquable sous le pointeur (billes des roles ≠ cache et ≠ ouverte). */
-export function noteSousPointeur(sx, sy) {
+const _bille = new THREE.Vector3()
+const _echelleBille = new THREE.Vector3()
+
+/**
+ * Note cliquable sous le pointeur (billes des roles ≠ cache et ≠ ouverte). Sur
+ * telephone une bille fait 6 a 10 px de diametre, un doigt la manque souvent :
+ * si le rayon ne touche rien, on retient la fille ou petite-fille dont le bord
+ * est le plus proche a l'ecran, a `tolerance` px pres. Freres et ancetres (grands
+ * disques proches de la camera) ne sont retenus que touches directement.
+ */
+export function noteSousPointeur(sx, sy, tolerance = 0) {
   preparerRaycast(sx, sy)
   const touches = raycaster.intersectObjects(billesCliquables, false)
-  return touches.length > 0 ? noeuds.get(touches[0].object.userData.id)?.note ?? null : null
+  if (touches.length > 0) return noeuds.get(touches[0].object.userData.id)?.note ?? null
+  // px par unite monde a distance 1 (GEO_UNITE : rayon monde = echelle monde)
+  const pxParUnite = innerHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))
+  let meilleure = null, meilleurEcart = tolerance
+  for (const bille of billesCliquables) {
+    const n = noeuds.get(bille.userData.id)
+    if (n.role !== 'enfant' && n.role !== 'petit') continue
+    bille.getWorldPosition(_bille)
+    const distance = _bille.distanceTo(camera.position)
+    _bille.project(camera)
+    if (_bille.z > 1) continue // derriere la camera
+    const x = (_bille.x * 0.5 + 0.5) * innerWidth, y = (-_bille.y * 0.5 + 0.5) * innerHeight
+    const rayonPx = (bille.getWorldScale(_echelleBille).x * pxParUnite) / distance
+    const ecart = Math.hypot(x - sx, y - sy) - rayonPx
+    if (ecart < meilleurEcart) {
+      meilleurEcart = ecart
+      meilleure = n.note
+    }
+  }
+  return meilleure
 }
 
 /** Point monde vise sur la sphere qui porte les filles de `parentId` (null = racine). */
