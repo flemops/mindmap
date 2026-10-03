@@ -491,6 +491,10 @@ async function demarrer() {
     ajouterNotes(null, enfants)
     appliquerEtat(null, null, 1)
     orienter(null, false) // premiere vue : les notes de premier niveau face a la camera
+    // Donnees seules, rien d'affiche : la premiere note ouverte connait deja ses
+    // filles et la camera s'oriente vers elles en un seul mouvement, meme quand le
+    // reseau mobile les livrerait apres la fin du vol. Un echec se rejoue a l'ouverture.
+    for (const note of enfants) chargerEnfants(note.id).catch(() => {})
   } catch (erreur) {
     signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
   } finally {
