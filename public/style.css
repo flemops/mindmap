@@ -84,10 +84,20 @@ html, body {
 }
 .etiquette--ouverte { font-size: 1.1rem; font-weight: 600; color: var(--ambre); }
 .etiquette--enfant { font-size: .85rem; font-weight: 500; }
-.etiquette--petit { font-size: .72rem; font-weight: 400; opacity: .7; color: var(--attenue); }
+.etiquette--petit { font-size: .72rem; font-weight: 400; opacity: .8; color: var(--attenue); }
 .etiquette--survol { color: var(--ambre); opacity: 1; }
-/* Dos du globe : attenuee et non cliquable (la face avant prime). */
-.etiquette.etiquette--derriere { opacity: .15; pointer-events: none; }
+/* Dos du globe : attenuee mais lisible et cliquable. Le CSS2DRenderer empile les
+   etiquettes par distance : une etiquette de face reste au-dessus et prime ;
+   celle qui en recouvrirait une autre est masquee par `etiquette--genee`. */
+.etiquette.etiquette--derriere { opacity: .32; }
+.etiquette.etiquette--derriere.etiquette--survol { opacity: 1; }
+/* Collision (scene.js#majEtiquettesGenees) : l'etiquette qui en recouvre une plus
+   prioritaire s'efface. Une fille reste devinable ; une petite-fille ou une
+   etiquette du dos du globe disparait. Le survol de la bille la revele toujours. */
+.etiquette--enfant.etiquette--genee { opacity: .3; }
+.etiquette--petit.etiquette--genee,
+.etiquette--derriere.etiquette--genee { opacity: 0; pointer-events: none; }
+.etiquette.etiquette--genee.etiquette--survol { opacity: 1; }
 /* Freres/ancetres : masquee par defaut, revelee au survol de leur bille. */
 .etiquette.etiquette--cachee { opacity: 0; pointer-events: none; }
 .etiquette.etiquette--cachee.etiquette--survol { opacity: 1; pointer-events: auto; }
