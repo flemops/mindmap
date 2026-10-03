@@ -141,6 +141,22 @@ La cible de 30 étiquettes visibles en même temps n'a pas pu être vérifiée :
 base de production compte 8 notes, les données d'exemple 22. Le comportement
 au-delà n'est pas testé.
 
+## Branche « Sur le site »
+
+Tenue à jour depuis hamdy-tabsissi.com (`sync-site.js`, toutes les 10 minutes) :
+une fiche publiée apparaît dans la carte en 10 minutes au plus, une fiche
+dépubliée en disparaît. Limites connues :
+
+- Les projets sans type pro/perso sur le site (aujourd'hui observatoire-hardening,
+  mindmap, alpaca-lab) vont dans « Autres projets » ; leur donner un type dans
+  `/admin` du portfolio les range au bon endroit au passage suivant.
+- Un groupe dense (7 documents SMSI) reste lisible à 390 px mais ses titres
+  longs se touchent ; la liste du panneau reste la voie fiable.
+- Pas de note manuelle dans cette branche (refus 409) : elle disparaîtrait avec
+  son parent le jour où le site le retire.
+- Doublons manuels hérités (« Projets » › Portfolio, EventMap sous « Bienvenue ») :
+  à retirer à la main dans `/edit`.
+
 ## Données d'exemple et production
 
 `seed()` ne s'exécute que sur une base neuve. La base de production n'est pas

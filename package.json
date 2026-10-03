@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/smoke.mjs",
+    "test": "node --test test/smoke.mjs test/synchro.mjs",
     "verifier": "node scripts/verifier.mjs"
   },
   "engines": {

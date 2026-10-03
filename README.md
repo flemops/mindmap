@@ -42,6 +42,24 @@ est entierement geree en amont par Cloudflare Access. Le service n'ecoute que
 sur `127.0.0.1` et n'est joignable que par le tunnel cloudflared, donc l'origine
 n'est pas atteignable directement.
 
+## Synchronisation avec le site
+
+La branche **« Sur le site »** est tenue a jour automatiquement a partir de
+hamdy-tabsissi.com (`sync-site.js`) : au demarrage puis toutes les 10 minutes,
+le serveur lit `/api/contenus.json` du portfolio (fiches publiees + documents
+SMSI) — en local sur la VM (`127.0.0.1:3000`), sinon par l'adresse publique.
+
+- Le site possede titre, resume, lien et existence de ces notes (colonne
+  `source`, ex. `site:projet:eventmap`) ; leur position, posee une fois a la
+  creation, reste deplacable dans `/edit` et n'est jamais reecrite.
+- Les notes manuelles (`source` NULL) ne sont jamais touchees.
+- Source injoignable, en erreur, mal formee ou vide : rien n'est modifie.
+- Dans cette branche, `/api/write/*` refuse modification, suppression et
+  creation (409) ; seule la position reste libre.
+- Etat du dernier passage : `GET /api/synchro.json`.
+- Variables : `SITE_SYNC=off` coupe la synchro (tests), `SITE_CONTENUS_URL`
+  force une source unique.
+
 ## Developpement
 
 ```
@@ -84,6 +102,7 @@ peut encore l'avoir en cache (7 jours).
 ## Fichiers
 
 - `server.js` — routes Express, en-tetes de securite, separation lecture/ecriture, montage statique de `public/vendor/`
+- `sync-site.js` — synchronisation de la branche « Sur le site » avec les contenus publics du portfolio
 - `db.js` — schema, requetes preparees, donnees d'exemple
 - `public/apparence.js` — tous les reglages visuels (couleurs, tailles, opacites par role, globes, bloom, camera)
 - `public/scene.js` — scene Three.js : globe fractal, etiquettes CSS2D, bloom, raycast
