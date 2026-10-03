@@ -4,18 +4,28 @@ Limites du rendu Three.js (PR #2) et des réglages de lisibilité (PR #3),
 documentées ici plutôt que masquées. Vérifiées en production le 03/10/2026 sur
 mindmap.hamdy-tabsissi.com, dans un Chrome de bureau (fenêtre 1536 × 639) ;
 revérifiées après le déploiement de la PR #3 (Chrome de bureau et émulation
-1536 × 639 et 390 × 844).
+1536 × 639 et 390 × 844). Les finitions du 03/10/2026 (aide, panneau repliable,
+rotation, ancêtres, recherche) sont vérifiées par `npm run verifier`.
 
 ## Étiquettes au dos du globe
 
-Depuis la PR #3, une étiquette passée derrière le globe (`etiquette--derriere`)
-reste lisible (opacité 0,32) et cliquable. Vérifié en production : depuis
+Une étiquette passée derrière le globe (`etiquette--derriere`) reste lisible et
+cliquable : opacité 0,6 pour une fille (cible de navigation de premier rang,
+~6:1 sur le fond), 0,32 pour une petite-fille. Vérifié en production : depuis
 « Bienvenue », un clic sur l'étiquette « Projets », au dos du globe, ouvre
 « Projets ». Avant la PR #3, ce clic ne faisait rien (2 essais sur 2).
 
-La caméra se tourne vers les notes filles à l'ouverture d'une note, mais des
-filles réparties tout autour du globe restent en partie au dos : atténuées,
-pas masquées.
+La caméra se tourne vers les notes filles à l'ouverture d'une note, mais trois
+filles réparties tout autour du globe ne tiennent jamais toutes sur la face
+avant : il en reste une au dos, lisible à 0,6.
+
+## Ancêtres et globe parent
+
+La bille d'un ancêtre (au centre du globe parent, souvent juste derrière la
+caméra) formait un grand disque sombre ; elle est désormais masquée au repos et
+n'est plus cliquable. On remonte par le fil d'Ariane, « remonter » ou Échap.
+Le filaire du globe parent passe de 0,035 à 0,022 d'opacité. Réglages :
+`public/apparence.js` (`ROLES.ancetre`, `GLOBES.parent`).
 
 Une étiquette qui en recouvre une plus importante (`etiquette--genee`)
 s'efface et revient au survol de sa bille. Chemin toujours fiable : la liste
@@ -36,11 +46,20 @@ Comportement voulu (arrêt propre en fin de pas), pas un piège clavier.
 
 ## Performance
 
-Mesurée avant la PR #3 : 144 images par seconde au repos, environ 39 pendant un
-vol multi-niveaux, pire écart entre deux images 50 ms, sur une seule machine.
+Mesurée le 03/10/2026 sur la prod, dans un Chrome visible au premier plan
+(Intel Iris Xe, fenêtre 1440 × 900) :
 
-Non remesurée après la PR #3, qui ajoute un calcul de collisions d'étiquettes à
-chaque image rendue (négligeable à 8 notes, non testé sur une base plus dense).
+| Phase | Avec bloom | Sans bloom (`?sansbloom`) |
+|---|---|---|
+| Repos | 144 images/s | 144 images/s |
+| Vol simple | 30 images/s (une image sur deux > 33 ms) | 76 images/s |
+| Orbite à la souris | 38 images/s | 94 images/s |
+| Vol multi-niveaux | 35 images/s | 107 images/s |
+
+Le bloom (`UnrealBloomPass`, plein écran) est le goulot dès que la caméra bouge :
+×2,5 à ×3. En émulation téléphone (390 × 844, CPU ralenti ×4, même GPU), les vols
+tombent à 4-8 images/s : ordre de grandeur seulement, pas une mesure sur
+téléphone. Décision à prendre : couper ou alléger le bloom sur petit écran.
 
 ## Fil d'Ariane
 
@@ -58,8 +77,27 @@ fil d'Ariane et recherche empilés en bas, panneau de note au-dessus. Depuis la
 PR #3, le globe est centré dans la zone libre au-dessus du panneau (vérifié sur
 « Bienvenue », « Comment ca marche » et « Naviguer »).
 
-Le décalage du globe n'est recalculé qu'à la navigation : après une rotation de
-l'écran, il faut ouvrir une note pour le recaler.
+Rotation de l'écran : le globe est recadré et recentré tout de suite (avant, il
+gardait le décalage du portrait jusqu'à la navigation suivante). Sous 560 px, le
+panneau de note se réduit à son titre (bouton ▾) : il couvre alors 20 % de la
+hauteur au lieu de 42 % à 319 px, et le globe se recentre dans la place libérée.
+Une aide de première visite s'affiche à la racine (en haut sur téléphone, en bas
+à gauche sur bureau) ; elle ne revient plus dès qu'une note a été ouverte ou
+qu'elle a été fermée (mémoire du navigateur, sinon elle réapparaît sans erreur).
+
+## Anomalies « note ouverte sans Entrée » et « clic sans effet »
+
+Vues deux fois lors des premiers contrôles en prod, expliquées le 03/10/2026 :
+
+- La recherche choisissait un résultat dès l'appui (`pointerdown`) : un doigt
+  posé sur la liste pour la faire défiler ouvrait une note (reproduit : glisser
+  sur la liste ouvrait « A propos »). Le choix se fait désormais au clic.
+- Un clic pendant une transition (≈ 0,6 s après chaque ouverture, plus si les
+  filles tardent à arriver) est ignoré par conception : un seul vol à la fois.
+  Reproduit : un tap sur une fille 250 ms après l'ouverture de sa mère ne fait
+  rien. Dans un onglet en arrière-plan (cas des premiers contrôles), le rendu
+  tombe à ~2 images/s et la transition dure d'autant : d'où les « clics sans
+  effet ». Juste après le chargement, 12 taps sur 12 ouvrent la note.
 
 ## Taps sur téléphone
 

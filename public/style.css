@@ -19,6 +19,16 @@
      HUD et panneaux en mono (identite visuelle du portfolio). */
   --systeme: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+  /* Reglages des etiquettes (titres 3D) : pendant CSS de public/apparence.js.
+     Taille par role ; opacite au dos du globe (une fille reste une cible de
+     premier rang : .6, ~6:1) et quand une etiquette en recouvre une plus importante. */
+  --etiquette-ouverte: 1.1rem;
+  --etiquette-enfant: .85rem;
+  --etiquette-petit: .72rem;
+  --etiquette-dos: .32;
+  --etiquette-dos-fille: .6;
+  --etiquette-genee-fille: .3;
 }
 
 * { box-sizing: border-box; }
@@ -76,17 +86,17 @@ html, body {
   cursor: pointer;
   white-space: nowrap;
   color: var(--texte);
-  font: 500 .85rem/1.2 var(--systeme);
+  font: 500 var(--etiquette-enfant)/1.2 var(--systeme);
   padding: .15rem .4rem .35rem;
   /* Ombre portee : lisibilite garantie sur un fond de globe clair comme sombre. */
   text-shadow: 0 1px 2px var(--fond), 0 0 8px rgba(15, 17, 21, .95);
   transition: opacity .25s ease, font-size .25s ease, color .2s ease;
 }
-.etiquette--ouverte { font-size: 1.1rem; font-weight: 600; color: var(--ambre); }
-.etiquette--enfant { font-size: .85rem; font-weight: 500; }
+.etiquette--ouverte { font-size: var(--etiquette-ouverte); font-weight: 600; color: var(--ambre); }
+.etiquette--enfant { font-size: var(--etiquette-enfant); font-weight: 500; }
 /* Petite-fille : la hierarchie passe par la taille et la couleur attenuee, pas
    par l'opacite (a .8, ~4.7:1 seulement sur le fond pour un texte de 10 px). */
-.etiquette--petit { font-size: .72rem; font-weight: 400; color: var(--attenue); }
+.etiquette--petit { font-size: var(--etiquette-petit); font-weight: 400; color: var(--attenue); }
 .etiquette--survol { color: var(--ambre); opacity: 1; }
 /* Dos du globe : attenuee mais lisible et cliquable. Le CSS2DRenderer empile les
    etiquettes par distance : une etiquette de face reste au-dessus et prime ;
@@ -94,13 +104,13 @@ html, body {
    Une fille reste une cible de navigation de premier rang : .6 (~6:1) la garde
    lisible quand ses soeurs l'encadrent tout autour du globe ; une petite-fille
    du dos reste en retrait. */
-.etiquette.etiquette--derriere { opacity: .32; }
-.etiquette.etiquette--enfant.etiquette--derriere { opacity: .6; }
+.etiquette.etiquette--derriere { opacity: var(--etiquette-dos); }
+.etiquette.etiquette--enfant.etiquette--derriere { opacity: var(--etiquette-dos-fille); }
 .etiquette.etiquette--derriere.etiquette--survol { opacity: 1; }
 /* Collision (scene.js#majEtiquettesGenees) : l'etiquette qui en recouvre une plus
    prioritaire s'efface. Une fille reste devinable ; une petite-fille ou une
    etiquette du dos du globe disparait. Le survol de la bille la revele toujours. */
-.etiquette--enfant.etiquette--genee { opacity: .3; }
+.etiquette--enfant.etiquette--genee { opacity: var(--etiquette-genee-fille); }
 .etiquette--petit.etiquette--genee,
 .etiquette--derriere.etiquette--genee { opacity: 0; pointer-events: none; }
 .etiquette.etiquette--genee.etiquette--survol { opacity: 1; }

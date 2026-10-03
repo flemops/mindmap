@@ -47,6 +47,8 @@ n'est pas atteignable directement.
 ```
 npm install
 node server.js      # http://127.0.0.1:3020
+npm test            # smoke serveur (garde-fou du deploiement)
+npm run verifier    # parcours navigateur reels + captures dans .verif/ (voir CLAUDE.md)
 ```
 
 La base est creee et pre-remplie de donnees d'exemple au premier demarrage
@@ -83,9 +85,12 @@ peut encore l'avoir en cache (7 jours).
 
 - `server.js` — routes Express, en-tetes de securite, separation lecture/ecriture, montage statique de `public/vendor/`
 - `db.js` — schema, requetes preparees, donnees d'exemple
+- `public/apparence.js` — tous les reglages visuels (couleurs, tailles, opacites par role, globes, bloom, camera)
 - `public/scene.js` — scene Three.js : globe fractal, etiquettes CSS2D, bloom, raycast
 - `public/controls.js` — adaptateur camera-controls : orbite, pan, dolly, cadrage anime
 - `public/anim.js` — utilitaire de transition (`tween`), sans dependance, respecte `prefers-reduced-motion`
 - `public/recherche.js` — recherche combobox : indexation paresseuse de l'arbre, filtre, clavier
 - `public/app.js` — etat, navigation fractale, HUD, edition
 - `public/vendor/` — Three.js et camera-controls vendores (voir ci-dessus)
+- `scripts/verifier.mjs` — verification navigateur de bout en bout (Chrome du systeme, playwright-core)
+- `scripts/hooks/` — hooks Claude Code du projet (syntaxe apres edition, tests et verification avant fin de tache)
