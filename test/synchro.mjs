@@ -50,6 +50,20 @@ test('création : racine « Sur le site », groupes, contenus avec leur lien', a
   assert.equal(manuelles(), manuellesAvant, 'aucune note manuelle touchée')
 })
 
+test('placement : chaque groupe à 55-90° de son plus proche voisin (ni collé, ni au dos du globe)', () => {
+  const vecteur = ({ x, y }) => {
+    const phi = ((90 - y) * Math.PI) / 180, theta = (x * Math.PI) / 180
+    return [Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta)]
+  }
+  const angle = (a, b) => (Math.acos(Math.min(1, a.reduce((s, v, i) => s + v * b[i], 0))) * 180) / Math.PI
+  const groupes = db.prepare("SELECT x, y FROM notes WHERE source LIKE 'site:groupe:%'").all().map(vecteur)
+  assert.equal(groupes.length, 4)
+  for (const g of groupes) {
+    const voisin = Math.min(...groupes.filter((h) => h !== g).map((h) => angle(g, h)))
+    assert.ok(voisin >= 55 && voisin <= 90, `plus proche voisin à ${voisin.toFixed(0)}°`)
+  }
+})
+
 test('relance sans changement : rien ne bouge', async () => {
   const avant = instantane()
   assert.deepEqual(await passer(source(BASE)), { creees: 0, maj: 0, retirees: 0 })
