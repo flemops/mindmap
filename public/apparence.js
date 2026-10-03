@@ -27,8 +27,10 @@ export const MONDE = {
 // force .55, rayon .4, seuil .85 : seules les billes a `coeur` (Y = 1.0) depassent
 // le seuil ; grille, etoiles, traits et billes k <= 1 restent dessous.
 // Le bloom coute ~x2,5 en images par seconde des que la camera bouge (mesure du
-// 03/10/2026, Iris Xe) ; `?sansbloom` dans l'URL le coupe pour comparer.
-export const LUEUR = { coeur: 2.0, force: 0.55, rayon: 0.4, seuil: 0.85 }
+// 03/10/2026, Iris Xe) : coupe sur telephone (pointeur tactile et petit cote de
+// l'ecran sous `petitCoteTelephone` px). `?sansbloom` le coupe partout,
+// `?avecbloom` le force sur telephone (pour comparer).
+export const LUEUR = { coeur: 2.0, force: 0.55, rayon: 0.4, seuil: 0.85, surTelephone: false, petitCoteTelephone: 600 }
 
 // Globes (grille filaire + voile de verre). Ouvert : support lisible sans que ses
 // courbes passent devant les titres. Parent : proche de la camera, il couvre

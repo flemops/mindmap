@@ -66,13 +66,19 @@ const pixelRatio = () => Math.min(devicePixelRatio, 2)
 
 // Le bloom exige un rendu en flottant : sans EXT_color_buffer_float (certains
 // GPU mobiles) le framebuffer serait incomplet. Repli : rendu direct avec
-// l'antialias natif, le halo sprite reste seul a suggerer la lueur.
-// `?sansbloom` force le repli pour comparer a l'oeil.
+// l'antialias natif, le halo sprite reste seul a suggerer la lueur. Sur
+// telephone il est coupe d'office (cout, voir apparence.js#LUEUR).
+// `?sansbloom` / `?avecbloom` forcent l'un ou l'autre pour comparer a l'oeil.
+const estTelephone =
+  matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < LUEUR.petitCoteTelephone
 let renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' })
 const bloomPossible =
   renderer.capabilities.isWebGL2 &&
   renderer.extensions.has('EXT_color_buffer_float') &&
-  !location.search.includes('sansbloom')
+  !location.search.includes('sansbloom') &&
+  (!estTelephone || LUEUR.surTelephone || location.search.includes('avecbloom'))
+/** Lu par scripts/verifier.mjs : bloom coupe sur telephone, actif sur bureau. */
+export const BLOOM_ACTIF = bloomPossible
 if (!bloomPossible) {
   renderer.forceContextLoss()
   renderer.dispose()
@@ -674,9 +680,13 @@ function etatGlobe(g, o) {
 
 /**
  * k <= 1 : fondu de l'ambre vers le fond (dimming par la couleur, opaque).
- * k > 1 : ambre boostee en lineaire (setHex a deja converti) → luit.
+ * k > 1 : ambre boostee en lineaire (setHex a deja converti) → luit. Sans bloom
+ * (telephone), ce gain ne ferait que saturer la teinte (ambre → jaune citron,
+ * hors palette) : plafonne a 1, la bille garde l'ambre exact.
  */
+const GAIN_MAX = bloomPossible ? Infinity : 1
 function couleurBille(k, cible) {
+  k = Math.min(k, GAIN_MAX)
   return k <= 1 ? cible.copy(AMBRE).lerp(FOND, 1 - k) : cible.copy(AMBRE).multiplyScalar(k)
 }
 

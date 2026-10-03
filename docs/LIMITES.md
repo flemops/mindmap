@@ -57,9 +57,23 @@ Mesurée le 03/10/2026 sur la prod, dans un Chrome visible au premier plan
 | Vol multi-niveaux | 35 images/s | 107 images/s |
 
 Le bloom (`UnrealBloomPass`, plein écran) est le goulot dès que la caméra bouge :
-×2,5 à ×3. En émulation téléphone (390 × 844, CPU ralenti ×4, même GPU), les vols
-tombent à 4-8 images/s : ordre de grandeur seulement, pas une mesure sur
-téléphone. Décision à prendre : couper ou alléger le bloom sur petit écran.
+×2,5 à ×3. Il est donc **coupé sur téléphone** (pointeur tactile et petit côté de
+l'écran sous 600 px ; réglage `LUEUR` dans `public/apparence.js`, `?avecbloom`
+pour comparer). Sans bloom, les billes gardent l'ambre exact (gain plafonné à 1,
+sinon la teinte saturait en jaune citron) et seul le halo de la note ouverte
+suggère la lueur.
+
+Mesure en émulation téléphone (390 × 844, CPU ralenti ×4, même GPU de portable :
+ordre de grandeur, pas une mesure sur téléphone) :
+
+| Phase | Avec bloom | Sans bloom |
+|---|---|---|
+| Vol multi-niveaux | 20 images/s, 84 % d'images > 33 ms | 37 images/s, 21 % |
+| Vol simple | 22 images/s, 73 % > 33 ms | 25 images/s, 36 % |
+| Repos après ouverture | 21 images > 33 ms sur 317 | 2 sur 359 |
+
+Le vol simple reste limité par le processeur (chargement, création des
+étiquettes), pas par le rendu.
 
 ## Fil d'Ariane
 
