@@ -156,6 +156,11 @@ html, body {
   font-size: .8rem;
   line-height: 1.6;
 }
+/* Page d'origine d'une note issue du site : texte ambre sur le panneau (~9:1). */
+#ligne-lien-note { margin: -.3rem 0 .7rem; font-size: .78rem; }
+.lien-note { color: var(--ambre); text-underline-offset: .2em; }
+.lien-note:hover { text-decoration-thickness: 2px; }
+#edition-site { margin: 0; line-height: 1.5; }
 
 .hud-ligne {
   display: flex;

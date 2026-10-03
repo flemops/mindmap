@@ -28,6 +28,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notes_parent ON notes(parent_id);
 `)
 
+// Colonnes ajoutees apres coup (base de prod existante) : on lit le schema reel
+// plutot que d'intercepter l'erreur « duplicate column », dont le texte varie.
+// `source` : identifiant d'une note issue du site (ex. `site:projet:eventmap`),
+// NULL pour une note manuelle ; `lien` : sa page sur le site.
+const colonnes = new Set(db.prepare('PRAGMA table_info(notes)').all().map((c) => c.name))
+for (const def of ['source TEXT', 'lien TEXT']) {
+  if (!colonnes.has(def.split(' ')[0])) db.exec(`ALTER TABLE notes ADD COLUMN ${def}`)
+}
+// UNIQUE sur une colonne NULL-able : SQLite admet plusieurs NULL (notes manuelles).
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_source ON notes(source)')
+
 const queries = {
   getNote: db.prepare('SELECT * FROM notes WHERE id = ?'),
   getChildren: db.prepare('SELECT * FROM notes WHERE parent_id IS ? ORDER BY id'),
@@ -39,6 +50,40 @@ const queries = {
   ),
   updatePosition: db.prepare('UPDATE notes SET x = ?, y = ? WHERE id = ?'),
   deleteNote: db.prepare('DELETE FROM notes WHERE id = ?'),
+  listSynced: db.prepare("SELECT * FROM notes WHERE source LIKE 'site:%' ORDER BY id"),
+  insertSynced: db.prepare(
+    'INSERT INTO notes (parent_id, x, y, titre, contenu, source, lien) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ),
+  updateSynced: db.prepare('UPDATE notes SET parent_id = ?, titre = ?, contenu = ?, lien = ? WHERE id = ?'),
+}
+
+// --- Notes issues du site (sync-site.js) -----------------------------------
+
+export function notesSynchronisees() {
+  return queries.listSynced.all()
+}
+
+export function creerNoteSynchro({ parent_id, x, y, titre, contenu, source, lien }) {
+  const result = queries.insertSynced.run(parent_id, x, y, titre, contenu, source, lien)
+  return queries.getNote.get(result.lastInsertRowid)
+}
+
+/** Ne touche jamais x/y : la position appartient a Hamdy une fois posee. */
+export function majNoteSynchro(id, { parent_id, titre, contenu, lien }) {
+  queries.updateSynced.run(parent_id, titre, contenu, lien, id)
+}
+
+/** Tout ou rien : une synchro interrompue ne laisse jamais une branche a moitie ecrite. */
+export function enTransaction(fn) {
+  db.exec('BEGIN')
+  try {
+    const resultat = fn()
+    db.exec('COMMIT')
+    return resultat
+  } catch (erreur) {
+    db.exec('ROLLBACK')
+    throw erreur
+  }
 }
 
 /** Une note "racine" virtuelle (id null) : ses filles sont les notes de premier niveau. */

@@ -12,6 +12,7 @@ Node 22+, Express, `node:sqlite` (une table récursive `notes`). Front sans buil
 - `public/controls.js` : caméra (camera-controls) et tri des gestes (clic, glisser, tolérance tactile).
 - `public/app.js` : état (`ouverteId`), navigation, HUD, édition. Ne fait pas de maths 3D.
 - `server.js` / `db.js` : API publique en lecture, écriture `/api/write/*` protégée en amont par Cloudflare Access.
+- `sync-site.js` : branche « Sur le site » tenue à jour depuis `/api/contenus.json` du portfolio (toutes les 10 min). Le site possède titre, résumé, lien et existence de ces notes (`source` non NULL) ; la position reste à Hamdy ; les notes manuelles ne sont jamais touchées ; source en panne = aucun changement. État : `GET /api/synchro.json`. `SITE_SYNC=off` dans les tests et le vérificateur.
 
 ## Commandes
 - `npm start` : http://127.0.0.1:3020 (variables `PORT`, `MINDMAP_DB_PATH`).

@@ -49,6 +49,8 @@ const aide = document.getElementById('aide')
 const boutonFermerAide = document.getElementById('bouton-fermer-aide')
 const titreNote = document.getElementById('titre-note')
 const contenuNote = document.getElementById('contenu-note')
+const ligneLienNote = document.getElementById('ligne-lien-note')
+const lienNote = document.getElementById('lien-note')
 const listeEnfants = document.getElementById('liste-enfants')
 const compteur = document.getElementById('compteur-notes')
 const boutonRemonter = document.getElementById('bouton-remonter')
@@ -59,6 +61,13 @@ const champTitre = document.getElementById('champ-titre')
 const champContenu = document.getElementById('champ-contenu')
 const boutonSupprimer = document.getElementById('bouton-supprimer')
 const boutonAnnuler = document.getElementById('bouton-annuler')
+const boutonEnregistrer = panneau.querySelector('button[type="submit"]')
+const editionSite = document.getElementById('edition-site')
+
+// Page d'origine d'une note issue du site. La synchro (serveur) ne retient deja
+// que des liens vers ce domaine ; ce filtre double la garde cote navigateur.
+const SITE = 'https://hamdy-tabsissi.com/'
+const lienSite = (note) => (typeof note?.lien === 'string' && note.lien.startsWith(SITE) ? note.lien : null)
 
 if (enEdition) astuce.hidden = false
 
@@ -305,6 +314,9 @@ function majHud() {
   const filles = enfantsDe(ouverteId)
   titreNote.textContent = note.titre
   contenuNote.textContent = note.contenu || '(pas de contenu)'
+  const lien = lienSite(note)
+  ligneLienNote.hidden = !lien
+  if (lien) lienNote.href = lien
   listeEnfants.textContent = ''
   for (const n of filles) listeEnfants.appendChild(ligneBouton(n.note.id, n.note.titre))
   compteur.textContent = compterNotes(filles.length)
@@ -420,6 +432,8 @@ const crochets = {
   surDoubleClicVide(sx, sy, etiquetteId) {
     if (!enEdition) return
     if (resoudreNote(sx, sy, etiquetteId)) return
+    // La branche « Sur le site » appartient a la synchro : le serveur refuserait (409).
+    if (ouverteId !== null && noeud(ouverteId).note.source) return
     // La nouvelle note se pose sur la sphere du niveau actuellement ouvert.
     const point = pointSurSphereDe(ouverteId, sx, sy)
     if (!point) return
@@ -434,9 +448,13 @@ function ouvrirPanneauEdition(note) {
   editionNoteId = note ? note.id : null
   champTitre.value = note ? note.titre : ''
   champContenu.value = note ? note.contenu : ''
-  boutonSupprimer.hidden = !note
+  // Note issue du site : lecture seule ici (le serveur refuserait de toute facon).
+  const site = Boolean(note?.source)
+  champTitre.disabled = champContenu.disabled = boutonEnregistrer.disabled = site
+  editionSite.hidden = !site
+  boutonSupprimer.hidden = !note || site
   panneau.hidden = false
-  champTitre.focus()
+  ;(site ? boutonAnnuler : champTitre).focus()
 }
 
 function fermerPanneauEdition() {

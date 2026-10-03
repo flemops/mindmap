@@ -58,7 +58,9 @@ before(async () => {
       ...process.env,
       PORT: String(PORT),
       // Base jetable : ni la base de production ni celle du dépôt ne sont touchées.
-      MINDMAP_DB_PATH: path.join(travail, 'smoke.db')
+      MINDMAP_DB_PATH: path.join(travail, 'smoke.db'),
+      // Hors ligne et deterministe : la synchro avec le site a son propre test (synchro.mjs).
+      SITE_SYNC: 'off'
     }
   });
   serveur.stdout.on('data', (d) => (journal += d));

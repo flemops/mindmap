@@ -14,6 +14,7 @@ import {
   updatePosition,
   deleteNote,
 } from './db.js'
+import { synchroniserSite, etat as etatSynchro, SOURCES_PAR_DEFAUT, INTERVALLE_MS } from './sync-site.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PORT = process.env.PORT || 3020
@@ -54,8 +55,18 @@ function serializeNote(note) {
     y: note.y,
     titre: note.titre,
     contenu: note.contenu,
+    // Notes issues du site (sync-site.js) : identifiant de source et page d'origine.
+    source: note.source ?? null,
+    lien: note.lien ?? null,
   }
 }
+
+// Etat de la derniere synchro avec le site, sans message d'erreur brut (une
+// erreur reseau peut contenir une adresse) : de quoi verifier la prod d'un curl.
+app.get('/api/synchro.json', (req, res) => {
+  res.set('Cache-Control', 'no-store')
+  res.json(etatSynchro)
+})
 
 app.get('/api/notes/:id', (req, res) => {
   const id = req.params.id === 'root' ? null : Number(req.params.id)
@@ -71,13 +82,22 @@ app.get('/api/notes/:id', (req, res) => {
 // --- Ecriture : jamais atteinte sans une session Access valide -------------
 // (le prefixe /api/write/ est le contrat avec la path-policy Cloudflare Access)
 
+// La branche « Sur le site » appartient a la synchro : titre, contenu et
+// existence s'y modifient sur le site, pas ici (ils seraient ecrases ou
+// recrees au passage suivant, et une note manuelle glissee dedans disparaitrait
+// avec elle). Seule la position reste libre (PATCH .../position).
+const issueDuSite = (id) => Boolean(id !== null && getNoteOrRoot(id)?.source)
+const refusSite = (res) => res.status(409).json({ error: 'note issue du site : à modifier sur hamdy-tabsissi.com' })
+
 app.post('/api/write/notes', (req, res) => {
   const { parent_id, titre, contenu, x, y } = req.body ?? {}
   if (!titre || typeof titre !== 'string') {
     return res.status(400).json({ error: 'titre requis' })
   }
+  const parentId = parent_id === null || parent_id === undefined ? null : Number(parent_id)
+  if (issueDuSite(parentId)) return refusSite(res)
   const note = createNote({
-    parent_id: parent_id === null || parent_id === undefined ? null : Number(parent_id),
+    parent_id: parentId,
     titre,
     contenu: typeof contenu === 'string' ? contenu : '',
     x: Number(x) || 0,
@@ -90,6 +110,7 @@ app.put('/api/write/notes/:id', (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id invalide' })
 
+  if (issueDuSite(id)) return refusSite(res)
   const { titre, contenu, x, y } = req.body ?? {}
   const note = updateNote(id, { titre, contenu, x, y })
   if (!note) return res.status(404).json({ error: 'note introuvable' })
@@ -110,6 +131,7 @@ app.patch('/api/write/notes/:id/position', (req, res) => {
 app.delete('/api/write/notes/:id', (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'id invalide' })
+  if (issueDuSite(id)) return refusSite(res)
   const ok = deleteNote(id)
   if (!ok) return res.status(404).json({ error: 'note introuvable' })
   res.status(204).end()
@@ -158,6 +180,18 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err)
   res.status(statut).json({ error: statut === 400 ? 'requete invalide' : 'erreur serveur' })
 })
+
+// Synchro avec le site : au demarrage puis toutes les 10 min. SITE_SYNC=off la
+// coupe (tests, verificateur) ; SITE_CONTENUS_URL force une source unique.
+if (process.env.SITE_SYNC !== 'off') {
+  const sources = process.env.SITE_CONTENUS_URL ? [process.env.SITE_CONTENUS_URL] : SOURCES_PAR_DEFAUT
+  const passage = () =>
+    synchroniserSite({ sources }).catch((erreur) =>
+      console.error(JSON.stringify({ evenement: 'synchro_site', statut: 'erreur', type: erreur?.name ?? 'inconnu' }))
+    )
+  passage()
+  setInterval(passage, INTERVALLE_MS).unref()
+}
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`mindmap listening on 127.0.0.1:${PORT}`)

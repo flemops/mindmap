@@ -21,7 +21,9 @@ if (!sigCode) process.exit(0)
 
 const problemes = []
 if (lireTampon('tests-ok') !== sigCode) {
-  const r = spawnSync(process.execPath, ['--test', 'test/smoke.mjs'], { cwd: RACINE, encoding: 'utf8' })
+  // `npm test` : la liste des fichiers de test vit dans package.json, pas ici.
+  // shell requis sous Windows (npm.cmd) ; commande fixe d'un seul tenant, rien d'injecte.
+  const r = spawnSync('npm test', { cwd: RACINE, encoding: 'utf8', shell: true })
   if (r.status === 0) {
     mkdirSync(TAMPONS, { recursive: true })
     writeFileSync(path.join(TAMPONS, 'tests-ok'), sigCode)

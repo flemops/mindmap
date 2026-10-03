@@ -68,21 +68,29 @@ const ARBRE_FIXE = [
     ['À propos', 180, 5, ''],
   ]],
   ['Seconde racine', -120, -30, '', [['Note A', 10, 10, '']]],
+  // Branche synchronisee avec le site, figee ici (SITE_SYNC=off) : sert a verifier
+  // le lien « Voir sur le site ».
+  ['Sur le site', -60, -40, 'Ce que hamdy-tabsissi.com publie, tenu à jour automatiquement.', [
+    ['Projets pro', 0, 20, '', [
+      ['Projet du site', 30, 0, 'Résumé publié sur le site.', [], { source: 'site:projet:demo', lien: 'https://hamdy-tabsissi.com/projet/demo' }],
+    ], { source: 'site:groupe:pro', lien: 'https://hamdy-tabsissi.com/' }],
+  ], { source: 'site:racine', lien: 'https://hamdy-tabsissi.com/' }],
 ]
 
 function creerBase(fichier) {
   const db = new DatabaseSync(fichier)
   db.exec(`CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT,
     parent_id INTEGER REFERENCES notes(id) ON DELETE CASCADE, x REAL NOT NULL DEFAULT 0,
-    y REAL NOT NULL DEFAULT 0, titre TEXT NOT NULL, contenu TEXT NOT NULL DEFAULT '');`)
+    y REAL NOT NULL DEFAULT 0, titre TEXT NOT NULL, contenu TEXT NOT NULL DEFAULT '',
+    source TEXT, lien TEXT);`)
   return db
 }
 
 function creerFixe(fichier) {
   const db = creerBase(fichier)
-  const inserer = db.prepare('INSERT INTO notes (parent_id, x, y, titre, contenu) VALUES (?, ?, ?, ?, ?)')
-  const poser = (parent, [titre, x, y, contenu, filles = []]) => {
-    const { lastInsertRowid } = inserer.run(parent, x, y, titre, contenu)
+  const inserer = db.prepare('INSERT INTO notes (parent_id, x, y, titre, contenu, source, lien) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  const poser = (parent, [titre, x, y, contenu, filles = [], { source = null, lien = null } = {}]) => {
+    const { lastInsertRowid } = inserer.run(parent, x, y, titre, contenu, source, lien)
     for (const f of filles) poser(Number(lastInsertRowid), f)
   }
   for (const racine of ARBRE_FIXE) poser(null, racine)
@@ -92,11 +100,11 @@ function creerFixe(fichier) {
 /** Copie l'arbre public de la prod (lecture seule, memes ids et positions). */
 async function copierProd(fichier) {
   const db = creerBase(fichier)
-  const inserer = db.prepare('INSERT INTO notes (id, parent_id, x, y, titre, contenu) VALUES (?, ?, ?, ?, ?, ?)')
+  const inserer = db.prepare('INSERT INTO notes (id, parent_id, x, y, titre, contenu, source, lien) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
   const copier = async (id) => {
     const { children } = await (await fetch(`${PROD}/api/notes/${id ?? 'root'}`)).json()
     for (const n of children) {
-      inserer.run(n.id, n.parent_id, n.x, n.y, n.titre, n.contenu)
+      inserer.run(n.id, n.parent_id, n.x, n.y, n.titre, n.contenu, n.source ?? null, n.lien ?? null)
       await copier(n.id)
     }
   }
@@ -113,7 +121,8 @@ async function demarrerServeur() {
   const port = Number(process.env.VERIF_PORT ?? 3998)
   serveur = spawn(process.execPath, ['server.js'], {
     cwd: RACINE,
-    env: { ...process.env, PORT: String(port), MINDMAP_DB_PATH: base },
+    // SITE_SYNC=off : l'arbre teste reste celui de la base, la synchro a ses propres tests.
+    env: { ...process.env, PORT: String(port), MINDMAP_DB_PATH: base, SITE_SYNC: 'off' },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   let journal = ''
@@ -232,6 +241,7 @@ async function parcours(navigateur, nom, url, arbre) {
     verifier(fil.at(-1) === C.titre, `ouvrir « ${C.titre} » par sa bille${tactile ? ' (8 px a cote)' : ''}`)
     const anc = await page.evaluate(async (r) => { const n = (await import('/static/scene.js')).noeud(r); return [n.role, n.bille.visible] }, R.id)
     verifier(anc[0] === 'ancetre' && anc[1] === false, 'ancetre sans bille (pas de grand disque)')
+    verifier(!(await page.isVisible('#ligne-lien-note')), 'note manuelle : pas de lien « Voir sur le site »')
     await etape('3-fille')
 
     if (tactile) await page.tap('#bouton-remonter')
@@ -253,16 +263,54 @@ async function parcours(navigateur, nom, url, arbre) {
     await page.waitForTimeout(600)
   }
 
-  if (C) {
+  // La liste se met a jour a chaque frappe : attendre le resultat qui porte
+  // EXACTEMENT ce titre (le premier visible peut venir d'un debut de saisie),
+  // puis le choisir au doigt, ou au clavier (fleches + Entree) a la souris.
+  const ouvrirParRecherche = async (titre) => {
     await (tactile ? page.tap('#champ-recherche') : page.click('#champ-recherche'))
-    await page.keyboard.type(C.titre)
-    const resultat = await page.waitForSelector('#resultats li[data-i]', { timeout: 10_000 })
-    if (tactile) await resultat.tap()
-    else await page.keyboard.press('Enter')
+    await page.keyboard.press('Control+A')
+    await page.keyboard.type(titre)
+    const rang = await page
+      .waitForFunction(
+        (t) => {
+          const i = [...document.querySelectorAll('#resultats li[data-i]')].findIndex((l) => l.querySelector('.resultat-titre')?.textContent === t)
+          return i >= 0 ? i + 1 : null
+        },
+        titre,
+        { timeout: 10_000 }
+      )
+      .then(async (h) => (await h.jsonValue()) - 1)
+    if (tactile) await page.tap(`#resultats li[data-i]:nth-child(${rang + 1})`)
+    else {
+      await page.keyboard.press('ArrowDown', { delay: 20 })
+      for (let i = 0; i < rang; i++) await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+    }
+    // Vol multi-niveaux : sa duree depend de la profondeur et de la vitesse de
+    // rendu (bloom en rendu logiciel a 1440 px) ; on attend l'arrivee, pas un delai fixe.
+    await page
+      .waitForFunction((t) => document.querySelector('#fil-ariane li:last-child')?.textContent.trim() === t, titre, { timeout: 15_000 })
+      .catch(() => {}) // le controle qui suit dira ou la navigation s'est arretee
     await page.waitForTimeout(PAUSE_VOL)
+  }
+
+  if (C) {
+    await ouvrirParRecherche(C.titre)
     fil = await filAriane(page)
-    verifier(fil.at(-1) === C.titre, `recherche « ${C.titre} » (${tactile ? 'tap' : 'Entree'})`)
+    verifier(fil.at(-1) === C.titre, `recherche « ${C.titre} » (${tactile ? 'tap' : 'clavier'})`)
     await etape('5-recherche')
+  }
+
+  // Note issue du site : son lien vers la page d'origine s'affiche dans le panneau.
+  if (arbre.S) {
+    await ouvrirParRecherche(arbre.S.titre)
+    const lien = await page.evaluate(() => {
+      const ligne = document.querySelector('#ligne-lien-note')
+      return ligne.hidden ? null : document.querySelector('#lien-note').href
+    })
+    fil = await filAriane(page)
+    verifier(lien === arbre.S.lien && fil.at(-1) === arbre.S.titre, `note du site « ${arbre.S.titre} » : lien vers ${lien ?? 'rien'} (fil : ${fil.join(' › ')})`)
+    await etape('6-note-du-site')
   }
 
   verifier(erreurs.length === 0, `aucune erreur console${erreurs.length ? ' : ' + erreurs.join(' | ') : ''}`)
@@ -276,17 +324,25 @@ async function parcours(navigateur, nom, url, arbre) {
  */
 async function lireArbre(url) {
   const enfants = async (id) => (await (await fetch(`${url}/api/notes/${id ?? 'root'}`)).json()).children
+  // Premiere note issue du site (racine « Sur le site » › groupe › contenu), s'il y en a.
+  let S = null
+  const surLeSite = (await enfants(null)).find((n) => n.source === 'site:racine')
+  const groupe = surLeSite && (await enfants(surLeSite.id))[0]
+  const contenu = groupe && (await enfants(groupe.id))[0]
+  if (contenu?.lien) S = { titre: contenu.titre, lien: contenu.lien }
+  const avecS = (arbre) => ({ ...arbre, S })
   let repli = null
-  for (const R of await enfants(null)) {
+  // Parcours principal sur les notes manuelles : la branche du site a son propre contrôle.
+  const manuelles = (await enfants(null)).filter((n) => !n.source)
+  for (const R of manuelles) {
     const filles = await enfants(R.id)
     if (!filles.length) continue
     const arbre = { R, C: filles[0], fillesR: filles.map((n) => n.id) }
     repli ??= arbre
-    for (const C of filles) if ((await enfants(C.id)).length) return { ...arbre, C }
+    for (const C of filles) if ((await enfants(C.id)).length) return avecS({ ...arbre, C })
   }
-  if (repli) return repli
-  const [R] = await enfants(null)
-  return { R, C: null, fillesR: [] }
+  if (repli) return avecS(repli)
+  return avecS({ R: manuelles[0], C: null, fillesR: [] })
 }
 
 function comparer(fichier) {

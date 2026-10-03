@@ -44,6 +44,8 @@
   <h2 id="titre-note" tabindex="-1"></h2>
   <div id="corps-note">
     <p id="contenu-note"></p>
+    <!-- Notes issues du site (synchro) : leur page d'origine. -->
+    <p id="ligne-lien-note" hidden><a id="lien-note" class="lien-note" target="_blank" rel="noopener">Voir sur le site <span aria-hidden="true">↗</span></a></p>
     <ul id="liste-enfants" class="liste-enfants" aria-label="Notes à l'intérieur"></ul>
     <div class="hud-ligne">
       <span id="compteur-notes" class="hud-compte"></span>
@@ -73,6 +75,7 @@
 
 <form id="panneau-edition" class="panneau" hidden aria-labelledby="titre-edition">
   <div id="titre-edition" class="hud-titre">ÉDITION</div>
+  <p id="edition-site" class="hud-compte" hidden>Note issue du site : son titre et son texte se modifient sur hamdy-tabsissi.com. Sa position, elle, se règle ici en la faisant glisser.</p>
   <label for="champ-titre" class="hors-ecran">Titre</label>
   <input id="champ-titre" type="text" placeholder="Titre" required maxlength="120">
   <label for="champ-contenu" class="hors-ecran">Contenu</label>
