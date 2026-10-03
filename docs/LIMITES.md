@@ -1,20 +1,25 @@
 # Limites connues
 
-Limites du rendu Three.js (PR #2), documentées ici plutôt que masquées.
-Vérifiées en production le 03/10/2026 sur mindmap.hamdy-tabsissi.com, dans un
-Chrome de bureau (fenêtre 1536 × 639, écran 144 Hz).
+Limites du rendu Three.js (PR #2) et des réglages de lisibilité (PR #3),
+documentées ici plutôt que masquées. Vérifiées en production le 03/10/2026 sur
+mindmap.hamdy-tabsissi.com, dans un Chrome de bureau (fenêtre 1536 × 639) ;
+revérifiées après le déploiement de la PR #3 (Chrome de bureau et émulation
+1536 × 639 et 390 × 844).
 
-## Clic sur une étiquette occultée
+## Étiquettes au dos du globe
 
-Une étiquette passée derrière le globe (`etiquette--derriere`, opacité 0,15)
-ne répond pas au clic : l'angle de caméra est fixe après `fitToSphere` et le
-clic manque la bille 3D sous-jacente.
+Depuis la PR #3, une étiquette passée derrière le globe (`etiquette--derriere`)
+reste lisible (opacité 0,32) et cliquable. Vérifié en production : depuis
+« Bienvenue », un clic sur l'étiquette « Projets », au dos du globe, ouvre
+« Projets ». Avant la PR #3, ce clic ne faisait rien (2 essais sur 2).
 
-Vérifié en production : depuis « Bienvenue », un clic sur les étiquettes
-occultées « A propos » et « Comment ca marche » ne fait rien (2 essais sur 2).
+La caméra se tourne vers les notes filles à l'ouverture d'une note, mais des
+filles réparties tout autour du globe restent en partie au dos : atténuées,
+pas masquées.
 
-Chemin fiable : la liste des notes filles dans le panneau latéral (vérifiée :
-elle ouvre bien « A propos »), ou la recherche (`/`).
+Une étiquette qui en recouvre une plus importante (`etiquette--genee`)
+s'efface et revient au survol de sa bille. Chemin toujours fiable : la liste
+des notes filles dans le panneau latéral, ou la recherche (`/`).
 
 ## Échap en toute fin de vol multi-niveaux
 
@@ -24,33 +29,40 @@ posée, remonte bien d'un niveau.
 
 Vérifié en production sur le vol Racine → Bienvenue → Comment ca marche →
 Structure : Échap envoyé à l'arrivée sur « Structure » sans effet, second Échap
-700 ms plus tard remonte à « Comment ca marche ».
+700 ms plus tard remonte à « Comment ca marche ». Au repos, Échap remonte d'un
+niveau (revérifié après la PR #3 : « Projets » → « Bienvenue »).
 
 Comportement voulu (arrêt propre en fin de pas), pas un piège clavier.
 
 ## Performance
 
-Au repos : 144 images par seconde. Pendant un vol multi-niveaux : environ
-39 images par seconde, pire écart entre deux images 50 ms. La chute pendant les
-transitions est réelle dans un navigateur non automatisé ; elle n'a été mesurée
-que sur une seule machine.
+Mesurée avant la PR #3 : 144 images par seconde au repos, environ 39 pendant un
+vol multi-niveaux, pire écart entre deux images 50 ms, sur une seule machine.
 
-## Fil d'Ariane tronqué
+Non remesurée après la PR #3, qui ajoute un calcul de collisions d'étiquettes à
+chaque image rendue (négligeable à 8 notes, non testé sur une base plus dense).
 
-À quatre niveaux de profondeur, le dernier élément du fil d'Ariane est coupé
-(« STRUC » au lieu de « STRUCTURE ») à 1536 px de large. Le fil défile
-horizontalement mais sa barre est masquée et il ne se cale pas sur la note
-ouverte.
+## Fil d'Ariane
+
+Corrigé par la PR #3 : le fil se cale sur la note ouverte. Vérifié en
+production à quatre niveaux (Racine → Bienvenue → Comment ca marche →
+Structure) : à 1536 px, le dernier maillon est entier et le fil défile de
+31 px, si bien que c'est le début de « RACINE » qui est rogné à gauche (le fil
+reste défilable horizontalement) ; à 390 px, les quatre maillons tiennent
+entiers.
 
 ## Mobile
 
-Vérifié en production en émulation 390 × 844 (agent Android, tactile émulé,
-clics souris) : aucun débordement horizontal, fil d'Ariane et recherche empilés
-en bas, panneau de note au-dessus, ouverture d'une note par son étiquette.
+Vérifié en production en émulation 390 × 844 : aucun débordement horizontal,
+fil d'Ariane et recherche empilés en bas, panneau de note au-dessus. Depuis la
+PR #3, le globe est centré dans la zone libre au-dessus du panneau (vérifié sur
+« Bienvenue », « Comment ca marche » et « Naviguer »).
+
+Le décalage du globe n'est recalculé qu'à la navigation : après une rotation de
+l'écran, il faut ouvrir une note pour le recaler.
 
 Non vérifié : un vrai téléphone, les gestes tactiles (pincer, glisser) et la
-fluidité sur mobile. Le panneau de note recouvre le bas de la scène et peut
-cacher des notes filles.
+fluidité sur mobile.
 
 ## Densité d'étiquettes
 
