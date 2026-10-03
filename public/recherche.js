@@ -193,13 +193,18 @@ function surClavierChamp(e) {
   }
 }
 
-function surPointeurListe(e) {
+// Appui : on garde seulement le focus. preventDefault avant le blur du champ
+// (mousedown le declencherait sinon en premier) : le focus reste sur le champ,
+// meme chemin qu'un Enter. Le choix attend le clic (relachement sur le meme
+// resultat) : choisir des l'appui ouvrait une note des qu'un doigt se posait
+// sur la liste pour la faire defiler.
+function surAppuiListe(e) {
+  if (e.target.closest('li[data-i]')) e.preventDefault()
+}
+
+function surClicListe(e) {
   const li = e.target.closest('li[data-i]')
-  if (!li) return
-  // preventDefault avant le blur du champ (mousedown le declenche sinon en
-  // premier) : le focus reste sur le champ, meme chemin qu'un Enter.
-  e.preventDefault()
-  choisir(Number(li.dataset.i))
+  if (li) choisir(Number(li.dataset.i))
 }
 
 /** Branche le module sur le DOM et les callbacks fournis par app.js. */
@@ -212,7 +217,8 @@ export function brancherRecherche({ champ, liste, chargerEnfants: cf, surChoix: 
   champEl.addEventListener('focus', assurerIndex)
   champEl.addEventListener('input', surSaisie)
   champEl.addEventListener('keydown', surClavierChamp)
-  listeEl.addEventListener('pointerdown', surPointeurListe)
+  listeEl.addEventListener('pointerdown', surAppuiListe)
+  listeEl.addEventListener('click', surClicListe)
   champEl.form?.addEventListener('submit', (e) => e.preventDefault())
 }
 

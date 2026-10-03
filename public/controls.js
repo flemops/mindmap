@@ -5,23 +5,22 @@
 // `camera.position` a la main (interdit par la spec).
 import * as THREE from './vendor/three-0.185.1/build/three.module.min.js'
 import CameraControls from './vendor/camera-controls-3.1.2/camera-controls.module.js'
-import { camera, RAYON_GLOBE, distanceCadrage } from './scene.js'
+import { camera, distanceCadrage } from './scene.js'
+import { MONDE, CAMERA } from './apparence.js'
 
 // Doit utiliser exactement le meme module three que scene.js : deux copies
 // donneraient deux constructeurs Vector3/Spherical distincts, et les `instanceof`
 // internes de la lib echoueraient silencieusement.
 CameraControls.install({ THREE })
 
-const RATIO_MIN_DISTANCE = 1.15 // sous 1, un dollyTo pourrait coller la camera dans le verre
-const MARGE_CADRAGE = 1.3 // fitToSphere n'a aucun padding : Sphere(centre, r × 1.3) donne ≈ 3.08 r de distance
 const SEUIL_SOURIS = 4 // px : en-deca, un clic n'est pas un glisser
 const SEUIL_TACTILE = 8
 
 // Sans domElement : connect() est appele depuis brancherControles, apres que
 // nos propres ecouteurs soient poses (ordre impose par la spec).
 const controls = new CameraControls(camera)
-controls.smoothTime = 0.35
-controls.draggingSmoothTime = 0.12
+controls.smoothTime = CAMERA.amorti
+controls.draggingSmoothTime = CAMERA.amortiGlisser
 controls.minPolarAngle = 0.12
 controls.maxPolarAngle = Math.PI - 0.12
 // Valeurs = defauts de camera-controls pour une PerspectiveCamera, postees
@@ -37,7 +36,7 @@ controls.touches = {
   two: CameraControls.ACTION.TOUCH_DOLLY_TRUCK,
   three: CameraControls.ACTION.TOUCH_TRUCK,
 }
-controls.maxDistance = distanceCadrage(RAYON_GLOBE * 1.3) * 2
+controls.maxDistance = distanceCadrage(MONDE.rayonGlobe * CAMERA.margeCadrage) * 2
 // Angle de depart actuel conserve (vue d'ensemble depuis un point fixe).
 controls.setLookAt(
   ...new THREE.Vector3().setFromSphericalCoords(320, Math.PI / 2.4, 0.6).toArray(),
@@ -59,13 +58,13 @@ export function reglerDistance(v) {
 
 // Remplace l'ancien viserCible(point, avancement) : la cible est desormais la sphere du globe vise.
 export function viserCible(centre, rayon, animer = true) {
-  controls.minDistance = rayon * RATIO_MIN_DISTANCE // AVANT le fit : dollyTo clampe contre la borne courante
+  controls.minDistance = rayon * CAMERA.distanceMin // AVANT le fit : dollyTo clampe contre la borne courante
   controls.normalizeRotations() // evite un rebobinage de N tours apres de longues orbites
-  return controls.fitToSphere(new THREE.Sphere(centre, rayon * MARGE_CADRAGE), animer)
+  return controls.fitToSphere(new THREE.Sphere(centre, rayon * CAMERA.margeCadrage), animer)
 }
 
 export function reglerVol(actif) {
-  controls.smoothTime = actif ? 0.2 : 0.35
+  controls.smoothTime = actif ? CAMERA.amortiVol : CAMERA.amorti
 }
 
 /**

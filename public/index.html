@@ -34,15 +34,34 @@
 <aside id="panneau-note" class="panneau" hidden aria-labelledby="titre-note">
   <div class="panneau-tete">
     <span class="hud-titre">NOTE</span>
-    <button type="button" id="bouton-fermer-note" aria-label="Revenir à la vue d'ensemble">&times;</button>
+    <span class="panneau-actions">
+      <!-- Petit écran seulement (style.css) : le panneau empilé en bas mange
+           près de la moitié de la hauteur, on peut le réduire à son titre. -->
+      <button type="button" id="bouton-replier" aria-expanded="true" aria-controls="corps-note" aria-label="Réduire la note">&#9662;</button>
+      <button type="button" id="bouton-fermer-note" aria-label="Revenir à la vue d'ensemble">&times;</button>
+    </span>
   </div>
   <h2 id="titre-note" tabindex="-1"></h2>
-  <p id="contenu-note"></p>
-  <ul id="liste-enfants" class="liste-enfants" aria-label="Notes à l'intérieur"></ul>
-  <div class="hud-ligne">
-    <span id="compteur-notes" class="hud-compte"></span>
-    <button type="button" id="bouton-remonter" hidden>&larr; remonter</button>
+  <div id="corps-note">
+    <p id="contenu-note"></p>
+    <ul id="liste-enfants" class="liste-enfants" aria-label="Notes à l'intérieur"></ul>
+    <div class="hud-ligne">
+      <span id="compteur-notes" class="hud-compte"></span>
+      <button type="button" id="bouton-remonter" hidden>&larr; remonter</button>
+    </div>
   </div>
+</aside>
+
+<!-- Première visite, à la racine seulement : disparaît pour de bon dès qu'une
+     note est ouverte ou que le visiteur la ferme (app.js). Le texte suit le
+     pointeur principal (style.css, `pointer: coarse`). -->
+<aside id="aide" class="panneau" hidden aria-labelledby="titre-aide">
+  <div class="panneau-tete">
+    <span id="titre-aide" class="hud-titre">Première visite</span>
+    <button type="button" id="bouton-fermer-aide" aria-label="Masquer l'aide">&times;</button>
+  </div>
+  <p class="aide-texte aide-souris">Cliquez sur une note pour l'ouvrir. Glisser : tourner &middot; molette : zoomer &middot; / : rechercher.</p>
+  <p class="aide-texte aide-tactile">Touchez une note pour l'ouvrir. Glisser : tourner &middot; pincer : zoomer.</p>
 </aside>
 
 <p id="annonce" class="hors-ecran" aria-live="polite"></p>

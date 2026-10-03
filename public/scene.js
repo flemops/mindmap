@@ -5,7 +5,7 @@
 //
 // La hierarchie de groupes EST la geometrie : chaque note est une `ancre`
 // posee en coordonnees unite (lon, lat) dans le `niveau` de son parent, et
-// possede son propre `niveau` (echelle FACTEUR_NIVEAU). Deplacer une note
+// possede son propre `niveau` (echelle MONDE.facteurNiveau). Deplacer une note
 // deplace ses filles gratuitement ; ouvrir un globe = un simple scale local.
 // Les groupes sont translates/scales, jamais tournes : la normale locale
 // d'une ancre (= sa position unite) est aussi sa normale monde.
@@ -23,40 +23,18 @@ import { EffectComposer } from './vendor/three-0.185.1/examples/jsm/postprocessi
 import { RenderPass } from './vendor/three-0.185.1/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from './vendor/three-0.185.1/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from './vendor/three-0.185.1/examples/jsm/postprocessing/OutputPass.js'
+// Tous les reglages visuels (couleurs, tailles, opacites par role, globes, bloom,
+// camera) : apparence.js. Ce fichier n'en garde que la mecanique.
+import { COULEURS, MONDE, LUEUR, GLOBES, ROLES, SURVOL, ETIQUETTES, ETOILES, CAMERA } from './apparence.js'
 
-// ---------------------------------------------------------------------------
-// Palette et constantes
-// ---------------------------------------------------------------------------
-
-// Palette stricte du portfolio (identique a style.css). La scene reste sombre
-// meme en `prefers-color-scheme: light`, d'ou des couleurs litterales ici.
-export const COULEURS = { fond: 0x0f1115, ambre: 0xe6b450, texte: 0xece9e2, attenue: 0x9c9ba6 }
-export const RAYON_GLOBE = 100
-/** Chaque niveau tient dans une sphere nettement plus petite que son parent. */
-export const FACTEUR_NIVEAU = 0.46
 /** Garde anti "deux copies de three" : app.js compare a '185'. */
 export const REVISION_THREE = THREE.REVISION
-
-// Gain lineaire des billes qui luisent (ouverte et enfants) : Y = 1.0 >= seuil
-// .85 du bloom. 1.72 est le minimum theorique ; 2.0 garde une marge quand un
-// filaire a 18 % passe devant le coeur (Y .88 au lieu de .78 → pas de trou
-// noir dans le masque). Si le coeur parait trop blanc, les leviers sont, dans
-// l'ordre : `strength` du bloom, `bloomPass.bloomTintColors`, puis ce K.
-const K_COEUR = 2.0
-// fitToSphere n'a aucun padding : Sphere(centre, r × 1.3) donne ≈ 3.08 r de
-// distance (fov 50, paysage), proche du cadrage historique.
-const MARGE_CADRAGE = 1.3
-
-// Opacite des fils de grille. .13 / .035 (au lieu de .18 / .06) : le globe reste
-// lisible comme support, mais ses courbes ne passent plus devant les titres.
-const GRILLE_OUVERTE = 0.13
-const GRILLE_PARENT = 0.035
 
 const AMBRE = new THREE.Color(COULEURS.ambre)
 const FOND = new THREE.Color(COULEURS.fond)
 
 /** Rayon du globe de profondeur `prof` (0 = racine). */
-const rayonNiveau = (prof) => RAYON_GLOBE * FACTEUR_NIVEAU ** prof
+const rayonNiveau = (prof) => MONDE.rayonGlobe * MONDE.facteurNiveau ** prof
 const lerp = THREE.MathUtils.lerp
 
 // ---------------------------------------------------------------------------
@@ -69,7 +47,7 @@ export const scene = new THREE.Scene()
 scene.background = new THREE.Color(COULEURS.fond)
 
 // far 4000 : les etoiles vivent entre 1400 et 2500.
-export const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 4000)
+export const camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, 0.1, 4000)
 // THREE.Clock est deprecie depuis peu (avertissement console a l'instanciation,
 // remplacement recommande : THREE.Timer, un addon non vendore ici). Seul usage
 // reel : getDelta() dans la boucle de app.js -- un chrono minimal maison evite
@@ -114,11 +92,9 @@ if (bloomPossible) {
   // prises pour la taille logique.
   composer.setSize(innerWidth, innerHeight)
   composer.addPass(new RenderPass(scene, camera))
-  // strength .55, radius .4, threshold .85 : seules les billes a K_COEUR
-  // (Y = 1.0) depassent le seuil ; grille .064, etoiles .27, trait .39,
-  // billes k <= 1 ≤ .50, halo ≤ .18 restent dessous. La resolution passee
-  // ici est ecrasee par composer.setSize.
-  composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.85))
+  // Reglages et seuil : apparence.js#LUEUR. La resolution passee ici est
+  // ecrasee par composer.setSize.
+  composer.addPass(new UnrealBloomPass(new THREE.Vector2(1, 1), LUEUR.force, LUEUR.rayon, LUEUR.seuil))
   composer.addPass(new OutputPass())
 }
 
@@ -211,12 +187,12 @@ function textureHalo() {
 scene.add(champDEtoiles())
 
 function champDEtoiles() {
-  const nombre = 1600
+  const nombre = ETOILES.nombre
   const positions = new Float32Array(nombre * 3)
   for (let i = 0; i < nombre; i++) {
     // Coquille lointaine : le fond bouge peu quand on orbite, effet « ciel »
     // plutot que « confettis ».
-    const rayon = 1400 + Math.random() * 1100
+    const rayon = ETOILES.rayonMin + Math.random() * ETOILES.epaisseur
     const theta = Math.random() * Math.PI * 2
     const phi = Math.acos(2 * Math.random() - 1)
     positions[i * 3] = rayon * Math.sin(phi) * Math.cos(theta)
@@ -231,10 +207,10 @@ function champDEtoiles() {
     geometrie,
     new THREE.PointsMaterial({
       color: COULEURS.attenue,
-      size: 2.2,
+      size: ETOILES.taille,
       sizeAttenuation: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: ETOILES.opacite,
       depthWrite: false,
       blending: THREE.NormalBlending,
     })
@@ -256,7 +232,7 @@ const noeuds = new Map()
 let billesCliquables = []
 
 const racineNiveau = new THREE.Group()
-racineNiveau.scale.setScalar(RAYON_GLOBE)
+racineNiveau.scale.setScalar(MONDE.rayonGlobe)
 scene.add(racineNiveau)
 {
   const { grille, verre } = creerGlobe(racineNiveau)
@@ -277,17 +253,17 @@ scene.add(racineNiveau)
 function creerGlobe(niveau) {
   const grille = new THREE.LineSegments(
     GEO_GRILLE,
-    new THREE.LineBasicMaterial({ color: COULEURS.attenue, transparent: true, opacity: GRILLE_OUVERTE, depthWrite: true })
+    new THREE.LineBasicMaterial({ color: COULEURS.attenue, transparent: true, opacity: GLOBES.ouvert.grille, depthWrite: true })
   )
   grille.renderOrder = 1
   const verre = new THREE.Mesh(
     GEO_VERRE,
     new THREE.MeshBasicMaterial({
-      color: COULEURS.fond, transparent: true, opacity: 0.55, depthWrite: false, side: THREE.FrontSide,
+      color: COULEURS.fond, transparent: true, opacity: GLOBES.ouvert.verre, depthWrite: false, side: THREE.FrontSide,
     })
   )
   // Legerement sous la grille : les fils restent nets devant le voile.
-  verre.scale.setScalar(0.97)
+  verre.scale.setScalar(GLOBES.retraitVerre)
   verre.renderOrder = 2
   niveau.add(grille, verre)
   return { grille, verre }
@@ -353,7 +329,7 @@ export function rendu(cameraBouge) {
  * Distance a laquelle une sphere tient dans le cadre. En portrait c'est le champ
  * horizontal qui contraint : une distance fixe y sortirait les notes du cadre.
  */
-export function distanceCadrage(rayon = RAYON_GLOBE, marge = MARGE_CADRAGE) {
+export function distanceCadrage(rayon = MONDE.rayonGlobe, marge = CAMERA.margeCadrage) {
   const champVertical = THREE.MathUtils.degToRad(camera.fov)
   const champHorizontal = 2 * Math.atan(Math.tan(champVertical / 2) * camera.aspect)
   // sin, pas tan : c'est la formule de getDistanceToFitSphere (camera-controls,
@@ -386,12 +362,7 @@ function majEtiquettesDos() {
   }
 }
 
-// Priorite d'affichage d'une etiquette quand deux boites se recouvrent : la note
-// ouverte, puis ses filles, puis les petites-filles ; a role egal, la face avant
-// prime sur le dos du globe.
-const PRIORITE = { ouverte: 6, enfant: 4, petit: 2 }
-const MARGE_BOITE = 2 // px rognes de chaque cote : deux boites qui se frolent ne se genent pas
-const BORD_ECRAN = 6 // px : marge gardee entre un titre et le bord de la fenetre
+// Priorites, marges : apparence.js#ETIQUETTES.
 const _ecran = new THREE.Vector3()
 const _boites = []
 
@@ -411,7 +382,7 @@ function majEtiquettesGenees() {
   _boites.length = 0
   for (const n of noeuds.values()) {
     if (!n.ancre) continue
-    const priorite = n.ancre.visible ? PRIORITE[n.role] : undefined
+    const priorite = n.ancre.visible ? ETIQUETTES.priorite[n.role] : undefined
     if (priorite === undefined) {
       poserGenee(n, false)
       continue
@@ -432,8 +403,8 @@ function majEtiquettesGenees() {
     // Titre qui deborderait de la fenetre : on le fait glisser le long de son
     // point d'ancrage (center.x du CSS2DObject : .5 = centre sur la bille) au
     // lieu de le laisser coupe. Applique au rendu suivant, d'ou marquerSale.
-    const gauche = Math.max(BORD_ECRAN, Math.min(x - n.taille.l / 2, w - BORD_ECRAN - n.taille.l))
-    const centre = n.taille.l >= w - 2 * BORD_ECRAN ? 0.5 : Math.max(0, Math.min(1, (x - gauche) / n.taille.l))
+    const gauche = Math.max(ETIQUETTES.bordEcran, Math.min(x - n.taille.l / 2, w - ETIQUETTES.bordEcran - n.taille.l))
+    const centre = n.taille.l >= w - 2 * ETIQUETTES.bordEcran ? 0.5 : Math.max(0, Math.min(1, (x - gauche) / n.taille.l))
     if (Math.abs(centre - n.etiquette.center.x) > 0.01) {
       n.etiquette.center.x = centre
       marquerSale()
@@ -442,8 +413,8 @@ function majEtiquettesGenees() {
     _boites.push({
       n,
       rang: priorite + (n.note.id === survolId ? 8 : 0) - (n.derriere ? 1.5 : 0),
-      x0: x0 + MARGE_BOITE, x1: x0 + n.taille.l - MARGE_BOITE,
-      y0: y - n.taille.h + MARGE_BOITE, y1: y - MARGE_BOITE,
+      x0: x0 + ETIQUETTES.margeBoite, x1: x0 + n.taille.l - ETIQUETTES.margeBoite,
+      y0: y - n.taille.h + ETIQUETTES.margeBoite, y1: y - ETIQUETTES.margeBoite,
     })
   }
   _boites.sort((a, b) => b.rang - a.rang)
@@ -587,7 +558,7 @@ export function ajouterNotes(parentId, notes) {
   // Rayon monde du globe qui porte ces notes, et taille de bille associee
   // (>= 1 unite pour rester cliquable au niveau le plus profond).
   const rNiveau = rayonNiveau(parent.prof)
-  const sBille = Math.max(1.0, rNiveau * 0.03) / rNiveau
+  const sBille = Math.max(MONDE.billeMin, rNiveau * MONDE.tailleBille) / rNiveau
 
   for (const note of notes) {
     if (noeuds.has(note.id)) continue
@@ -609,7 +580,7 @@ export function ajouterNotes(parentId, notes) {
         blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
       })
     )
-    halo.scale.setScalar(sBille * 8)
+    halo.scale.setScalar(sBille * MONDE.halo)
     halo.renderOrder = 3
     halo.visible = false
 
@@ -620,10 +591,10 @@ export function ajouterNotes(parentId, notes) {
     const etiquette = new CSS2DObject(element)
     // Ancre en bas de l'etiquette, posee au-dessus de la bille.
     etiquette.center.set(0.5, 1)
-    etiquette.position.set(0, sBille * 2.2, 0)
+    etiquette.position.set(0, sBille * MONDE.decalageEtiquette, 0)
 
     const niveau = new THREE.Group()
-    niveau.scale.setScalar(FACTEUR_NIVEAU)
+    niveau.scale.setScalar(MONDE.facteurNiveau)
 
     ancre.add(bille, halo, etiquette, niveau)
     parent.niveau.add(ancre)
@@ -645,7 +616,7 @@ export function ajouterNotes(parentId, notes) {
 
 /** Echelle d'un globe qui « nait du point » : la grille unite vit dans `niveau`. */
 function echelleDepart(id) {
-  return id === null ? 1 : noeuds.get(id).sBille / FACTEUR_NIVEAU
+  return id === null ? 1 : noeuds.get(id).sBille / MONDE.facteurNiveau
 }
 
 /**
@@ -658,7 +629,7 @@ export function assurerGlobe(id) {
   const { grille, verre } = creerGlobe(n.niveau)
   const s0 = echelleDepart(id)
   grille.scale.setScalar(s0)
-  verre.scale.setScalar(s0 * 0.97)
+  verre.scale.setScalar(s0 * GLOBES.retraitVerre)
   grille.material.opacity = 0
   verre.material.opacity = 0
   grille.visible = verre.visible = false
@@ -671,22 +642,7 @@ export function assurerGlobe(id) {
 // Etats derives : roles, globes, appliquerEtat
 // ---------------------------------------------------------------------------
 
-// Amendement B : `ouverte` ET `enfant` luisent (K_COEUR) ; les enfants restent
-// des meshes opaques ordinaires, donc ceux qui passent derriere la face avant du
-// verre sont ternis a 45 % et cessent de luire — indice de profondeur voulu.
-const CIBLES = {
-  ouverte: { k: K_COEUR, echelle: 1.4, halo: 0.35, trait: 0.12, classe: 'etiquette--ouverte', visible: true },
-  // Traits : .5 suffit a lire la relation mere → fille sans rivaliser avec les
-  // titres (.78 dessinait des rayons plus presents que le texte).
-  enfant: { k: K_COEUR, echelle: 1, halo: 0, trait: 0.5, classe: 'etiquette--enfant', visible: true },
-  petit: { k: 0.6, echelle: 1, halo: 0, trait: 0.2, classe: 'etiquette--petit', visible: true },
-  // Freres et ancetres : proches de la camera, ce sont de grands disques ; a k .3
-  // ils formaient des taches ocre plus visibles que la note ouverte. Ils restent
-  // cliquables et leur titre apparait toujours au survol.
-  voisin: { k: 0.2, echelle: 1, halo: 0, trait: 0.1, classe: 'etiquette--cachee', visible: true },
-  ancetre: { k: 0.1, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: true },
-  cache: { k: 0, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: false },
-}
+// Apparence par role (couleur, taille, halo, trait, titre) : apparence.js#ROLES.
 const CLASSES_TIER = ['etiquette--ouverte', 'etiquette--enfant', 'etiquette--petit', 'etiquette--cachee']
 
 /**
@@ -710,9 +666,9 @@ function roleDe(n, o, chemin) {
 
 /** Etat du globe `g` (id ou null) pour un id ouvert `o`. */
 function etatGlobe(g, o) {
-  if (g === o) return { echelle: 1, grille: GRILLE_OUVERTE, verre: 0.55, visible: true }
+  if (g === o) return { echelle: 1, grille: GLOBES.ouvert.grille, verre: GLOBES.ouvert.verre, visible: true }
   // Le globe parent de la note ouverte reste en grille legere, sans verre.
-  if (o !== null && g === noeuds.get(o)?.parentId) return { echelle: 1, grille: GRILLE_PARENT, verre: 0, visible: true }
+  if (o !== null && g === noeuds.get(o)?.parentId) return { echelle: 1, grille: GLOBES.parent.grille, verre: GLOBES.parent.verre, visible: true }
   return { echelle: echelleDepart(g), grille: 0, verre: 0, visible: false }
 }
 
@@ -752,13 +708,13 @@ export function appliquerEtat(depuisId, versId, p) {
     if (!n.ancre) continue
     const roleA = roleDe(n, depuisId, cheminA)
     const roleB = roleDe(n, versId, cheminB)
-    const A = CIBLES[roleA], B = CIBLES[roleB]
+    const A = ROLES[roleA], B = ROLES[roleB]
 
     couleurBille(lerp(A.k, B.k, p), n.bille.material.color)
     let echelle = lerp(A.echelle, B.echelle, p)
     // Le survol est un etat transitoire hors modele ; on le preserve pour qu'un
     // appliquerEtat au repos (prechargement) ne fasse pas sauter la bille.
-    if (n.note.id === survolId && roleB !== 'ouverte') echelle *= 1.3
+    if (n.note.id === survolId && roleB !== 'ouverte') echelle *= SURVOL.echelle
     n.bille.scale.setScalar(n.sBille * echelle)
     drapeauxOuvert(n.bille, roleA === 'ouverte' || roleB === 'ouverte')
 
@@ -784,8 +740,9 @@ export function appliquerEtat(depuisId, versId, p) {
     if (p === 1 && depuisId !== versId) n.taille = null
 
     n.ancre.visible = p < 1 ? A.visible || B.visible : B.visible
+    n.bille.visible = p < 1 ? A.bille !== false || B.bille !== false : B.bille !== false
     n.role = p < 1 ? (B.visible ? roleB : roleA) : roleB
-    if (n.ancre.visible && n.role !== 'cache' && n.role !== 'ouverte') cliquables.push(n.bille)
+    if (n.ancre.visible && n.bille.visible && n.role !== 'cache' && n.role !== 'ouverte') cliquables.push(n.bille)
   }
   billesCliquables = cliquables
 
@@ -794,7 +751,7 @@ export function appliquerEtat(depuisId, versId, p) {
     const A = etatGlobe(g, depuisId), B = etatGlobe(g, versId)
     const echelle = lerp(A.echelle, B.echelle, p)
     n.grille.scale.setScalar(echelle)
-    n.verre.scale.setScalar(echelle * 0.97)
+    n.verre.scale.setScalar(echelle * GLOBES.retraitVerre)
     const opaciteGrille = lerp(A.grille, B.grille, p)
     const opaciteVerre = lerp(A.verre, B.verre, p)
     n.grille.material.opacity = opaciteGrille
@@ -825,14 +782,14 @@ export function survoler(id) {
   if (ancien?.ancre) {
     ancien.etiquette.element.classList.remove('etiquette--survol')
     ancien.etiquette.renderOrder = 0
-    ancien.bille.scale.setScalar(ancien.sBille * (ancien.role === 'ouverte' ? 1.4 : 1))
+    ancien.bille.scale.setScalar(ancien.sBille * ROLES[ancien.role].echelle)
   }
   survolId = id
   const n = noeuds.get(id)
   if (n?.ancre) {
     n.etiquette.element.classList.add('etiquette--survol')
     n.etiquette.renderOrder = 1
-    if (n.role !== 'ouverte') n.bille.scale.setScalar(n.sBille * 1.3)
+    if (n.role !== 'ouverte') n.bille.scale.setScalar(n.sBille * SURVOL.echelle)
   }
   marquerSale()
 }

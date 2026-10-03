@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/smoke.mjs"
+    "test": "node --test test/smoke.mjs",
+    "verifier": "node scripts/verifier.mjs"
   },
   "engines": {
     "node": ">=22.5.0"
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "camera-controls": "^3.1.2",
+    "playwright-core": "^1.63.0",
     "three": "^0.185.1"
   }
 }
