@@ -94,20 +94,32 @@ for (let i = 0, n = 80; i < n; i++) {
   CANDIDATS.push({ x: Math.round(lon * 10) / 10, y: Math.round(lat * 10) / 10, v: versVecteur(lon, lat) })
 }
 
+// Ecart vise avec la soeur la plus proche : assez pour que deux titres ne se
+// genent pas, assez peu pour que le groupe tienne sur une meme face du globe.
+// (La place « la plus eloignee » mettait une 2e note a l'antipode de la 1re :
+// jamais visibles ensemble de face.)
+const ECART_VISE = 70
+const angle = (a, b) => (Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]))) * 180) / Math.PI
+
 /**
- * Place la plus eloignee des soeurs deja posees (manuelles comprises) : un
- * contenu publie apparait toujours dans un coin libre du globe. Deterministe.
+ * Place d'une nouvelle note parmi ses soeurs deja posees (manuelles comprises) :
+ * la plus degagee jusqu'a ECART_VISE, puis, entre places aussi degagees, la plus
+ * proche du centre du groupe. Deterministe.
  */
 function positionLibre(parentId) {
   const soeurs = getChildren(parentId).map((n) => versVecteur(n.x, n.y))
   if (!soeurs.length) return { x: CANDIDATS[0].x, y: CANDIDATS[0].y }
+  const centre = soeurs.reduce((m, s) => [m[0] + s[0], m[1] + s[1], m[2] + s[2]], [0, 0, 0])
+  const norme = Math.hypot(...centre) || 1
+  const versCentre = centre.map((c) => c / norme)
   let meilleur = CANDIDATS[0]
-  let meilleurEcart = -Infinity
+  let meilleurScore = -Infinity
   for (const c of CANDIDATS) {
-    // Ecart = distance a la soeur la plus proche (1 - cosinus, croissant avec l'angle).
-    const ecart = Math.min(...soeurs.map((s) => 1 - (c.v[0] * s[0] + c.v[1] * s[1] + c.v[2] * s[2])))
-    if (ecart > meilleurEcart) {
-      meilleurEcart = ecart
+    const ecart = Math.min(...soeurs.map((s) => angle(c.v, s)))
+    // Plafonne a ECART_VISE ; le terme suivant (≤ 0,01) ne departage que des egalites.
+    const score = Math.min(ecart, ECART_VISE) + 0.01 * (c.v[0] * versCentre[0] + c.v[1] * versCentre[1] + c.v[2] * versCentre[2])
+    if (score > meilleurScore) {
+      meilleurScore = score
       meilleur = c
     }
   }

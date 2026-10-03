@@ -39,6 +39,15 @@ for (const def of ['source TEXT', 'lien TEXT']) {
 // UNIQUE sur une colonne NULL-able : SQLite admet plusieurs NULL (notes manuelles).
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_source ON notes(source)')
 
+// Une seule fois (user_version 0 → 1) : les notes du site posees par le premier
+// placement (03/10/2026, a l'antipode de leurs soeurs, donc au dos du globe) sont
+// retirees ; la synchro suivante les recree avec le placement actuel. Elles ne
+// portent rien de Hamdy (titre, texte, lien viennent du site). Notes manuelles intactes.
+if (db.prepare('PRAGMA user_version').get().user_version < 1) {
+  db.exec("DELETE FROM notes WHERE source LIKE 'site:%'")
+  db.exec('PRAGMA user_version = 1')
+}
+
 const queries = {
   getNote: db.prepare('SELECT * FROM notes WHERE id = ?'),
   getChildren: db.prepare('SELECT * FROM notes WHERE parent_id IS ? ORDER BY id'),
