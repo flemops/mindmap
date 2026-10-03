@@ -23,8 +23,9 @@ import {
   enfantsDe,
   cheminIdsDe,
   sphereDe,
+  directionCadrage,
 } from './scene.js'
-import { brancherControles, appliquerCamera, viserCible, reglerVol, reglerDecalageMobile } from './controls.js'
+import { brancherControles, appliquerCamera, viserCible, orienterVers, reglerVol, reglerDecalage } from './controls.js'
 import { dureeAnim, tween } from './anim.js'
 import { brancherRecherche, invaliderIndexRecherche, ouvrirRecherche } from './recherche.js'
 
@@ -41,6 +42,7 @@ const filArianeOl = document.querySelector('#fil-ariane ol')
 const champRecherche = document.getElementById('champ-recherche')
 const resultats = document.getElementById('resultats')
 const panneauNote = document.getElementById('panneau-note')
+const hudHaut = document.getElementById('hud-haut')
 const boutonFermerNote = document.getElementById('bouton-fermer-note')
 const titreNote = document.getElementById('titre-note')
 const contenuNote = document.getElementById('contenu-note')
@@ -176,12 +178,14 @@ async function entrer(id, ms) {
   assurerGlobe(id) // grille + verre crees si absents, echelle de depart, opacites 0
   const { centre, rayon } = sphereDe(id)
   viserCible(centre, rayon, ms > 0) // promesse non attendue : le tween a lui seul une duree fixe
-  reglerDecalageMobile(rayon)
+  orienter(id, ms > 0) // filles deja connues : face camera ; sinon, au moins dos au parent
   const depuis = ouverteId
   ouverteId = id
   majHud() // fil d'ariane et panneau immediats, la scene suit
+  decaler(rayon, ms > 0) // APRES majHud : le decalage depend de la hauteur du panneau
   await Promise.all([tween(ms, (p) => appliquerEtat(depuis, id, p)), pEnfants])
   appliquerEtat(id, id, 1) // verrouille les visible=false, pose les roles des filles arrivees
+  if (pEnfants && ouverteId === id) orienter(id, ms > 0) // filles arrivees pendant le tween
   annoncer()
   precharger(id)
 }
@@ -191,12 +195,29 @@ async function remonter(ms) {
   const parent = noeud(id).parentId
   const { centre, rayon } = sphereDe(parent)
   viserCible(centre, rayon, ms > 0)
-  reglerDecalageMobile(rayon)
+  orienter(parent, ms > 0)
   ouverteId = parent
   majHud()
+  decaler(rayon, ms > 0)
   await tween(ms, (p) => appliquerEtat(id, parent, p))
   appliquerEtat(parent, parent, 1)
   annoncer()
+}
+
+/** Tourne la camera vers les filles de `id` ; sans direction nette, ne fait rien. */
+function orienter(id, animer) {
+  const direction = directionCadrage(id)
+  if (direction) orienterVers(direction, animer)
+}
+
+/**
+ * Centre le globe dans ce que le HUD laisse libre. Sous 560 px, le panneau de note
+ * (ou, a la racine, le HUD seul) est empile en bas de l'ecran ; au-dela, rien ne
+ * recouvre le centre et controls.js n'applique aucun decalage.
+ */
+function decaler(rayon, animer) {
+  const haut = (panneauNote.hidden ? hudHaut : panneauNote).getBoundingClientRect().top
+  reglerDecalage(rayon, haut, animer)
 }
 
 /**
@@ -235,6 +256,9 @@ function majHud() {
   filArianeOl.appendChild(ligneBouton(null, 'RACINE'))
   for (const id of cheminIdsDe(ouverteId)) filArianeOl.appendChild(ligneBouton(id, noeud(id).note.titre))
   filArianeOl.lastElementChild.firstElementChild.setAttribute('aria-current', 'page')
+  // Le fil defile horizontalement (barre masquee) : on le cale sur la note
+  // ouverte, sinon le dernier maillon est coupe des le 4e niveau.
+  filArianeOl.scrollLeft = filArianeOl.scrollWidth
 
   const seraCachee = ouverteId === null
   // Focus rendu AVANT de masquer un panneau qui le contient : sinon le focus
@@ -454,10 +478,12 @@ async function demarrer() {
     const enfants = await chargerEnfants(null)
     ajouterNotes(null, enfants)
     appliquerEtat(null, null, 1)
+    orienter(null, false) // premiere vue : les notes de premier niveau face a la camera
   } catch (erreur) {
     signalerErreur('Les notes n ont pas pu etre chargees.', erreur)
   } finally {
     majHud()
+    decaler(sphereDe(null).rayon, false)
   }
 }
 demarrer()

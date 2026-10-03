@@ -68,11 +68,35 @@ export function reglerVol(actif) {
   controls.smoothTime = actif ? 0.2 : 0.35
 }
 
-// Remonte le globe au-dessus du HUD bas sous 560 px : le panneau + le HUD y
-// couvrent environ la moitie de l'ecran, sans decalage le globe serait a moitie cache.
-export function reglerDecalageMobile(rayon) {
+/**
+ * Tourne la camera autour de sa cible pour regarder depuis `direction` (vecteur
+ * unitaire monde, cf. scene.js#directionCadrage). Ne touche ni a la cible ni a la
+ * distance : se combine avec le fitToSphere de viserCible. L'azimut vise est
+ * ramene au plus pres de l'azimut courant (jamais plus d'un demi-tour), le polaire
+ * est borne pour garder l'horizon lisible. L'orbite manuelle reste libre ensuite.
+ */
+export function orienterVers(direction, animer = true) {
+  const polaire = THREE.MathUtils.clamp(Math.acos(THREE.MathUtils.clamp(direction.y, -1, 1)), 0.7, Math.PI - 0.7)
+  const courant = controls.azimuthAngle
+  let ecart = (Math.atan2(direction.x, direction.z) - courant) % (2 * Math.PI)
+  if (ecart > Math.PI) ecart -= 2 * Math.PI
+  else if (ecart < -Math.PI) ecart += 2 * Math.PI
+  return controls.rotateTo(courant + ecart, polaire, animer)
+}
+
+/**
+ * Centre le globe dans la zone libre de l'ecran. Sous 560 px le HUD et le panneau
+ * de note sont empiles en bas : `basLibre` est l'ordonnee (px) du haut de ce qui
+ * recouvre la scene, le globe est remonte au milieu de ce qui reste. Au-dela de
+ * 560 px (ou sans `basLibre`) : aucun decalage. Le decalage en pixels est converti
+ * en unites monde a la distance de cadrage du globe vise.
+ */
+export function reglerDecalage(rayon, basLibre = innerHeight, animer = true) {
   const mobile = matchMedia('(max-width: 560px)').matches
-  controls.setFocalOffset(0, mobile ? -rayon * 0.3 : 0, 0, true) // signe a verifier a l'oeil (risque connu)
+  const pixels = mobile ? (innerHeight - Math.min(basLibre, innerHeight)) / 2 : 0
+  const parPixel = (2 * distanceCadrage(rayon) * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / innerHeight
+  // y positif : la camera glisse vers le bas, donc le globe monte a l'ecran.
+  controls.setFocalOffset(0, pixels * parPixel, 0, animer)
 }
 
 // --- Discrimination des gestes applicatifs ---------------------------------

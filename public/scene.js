@@ -47,6 +47,11 @@ const K_COEUR = 2.0
 // distance (fov 50, paysage), proche du cadrage historique.
 const MARGE_CADRAGE = 1.3
 
+// Opacite des fils de grille. .13 / .035 (au lieu de .18 / .06) : le globe reste
+// lisible comme support, mais ses courbes ne passent plus devant les titres.
+const GRILLE_OUVERTE = 0.13
+const GRILLE_PARENT = 0.035
+
 const AMBRE = new THREE.Color(COULEURS.ambre)
 const FOND = new THREE.Color(COULEURS.fond)
 
@@ -259,6 +264,7 @@ scene.add(racineNiveau)
     note: null, parentId: undefined, prof: 0, sBille: 0,
     ancre: null, bille: null, halo: null, etiquette: null, trait: null,
     niveau: racineNiveau, grille, verre, deplie: false, role: 'ouverte', derriere: false,
+    genee: false, taille: null,
   })
 }
 
@@ -271,7 +277,7 @@ scene.add(racineNiveau)
 function creerGlobe(niveau) {
   const grille = new THREE.LineSegments(
     GEO_GRILLE,
-    new THREE.LineBasicMaterial({ color: COULEURS.attenue, transparent: true, opacity: 0.18, depthWrite: true })
+    new THREE.LineBasicMaterial({ color: COULEURS.attenue, transparent: true, opacity: GRILLE_OUVERTE, depthWrite: true })
   )
   grille.renderOrder = 1
   const verre = new THREE.Mesh(
@@ -339,6 +345,8 @@ export function rendu(cameraBouge) {
   majEtiquettesDos()
   composer ? composer.render() : renderer.render(scene, camera)
   labelRenderer?.render(scene, camera)
+  // Apres le rendu : les matrices monde et la projection sont a jour.
+  majEtiquettesGenees()
 }
 
 /**
@@ -376,6 +384,85 @@ function majEtiquettesDos() {
       n.etiquette.element.classList.toggle('etiquette--derriere', derriere)
     }
   }
+}
+
+// Priorite d'affichage d'une etiquette quand deux boites se recouvrent : la note
+// ouverte, puis ses filles, puis les petites-filles ; a role egal, la face avant
+// prime sur le dos du globe.
+const PRIORITE = { ouverte: 6, enfant: 4, petit: 2 }
+const MARGE_BOITE = 2 // px rognes de chaque cote : deux boites qui se frolent ne se genent pas
+const BORD_ECRAN = 6 // px : marge gardee entre un titre et le bord de la fenetre
+const _ecran = new THREE.Vector3()
+const _boites = []
+
+/**
+ * Collisions d'etiquettes. Les boites sont calculees par projection (meme calcul
+ * que le CSS2DRenderer : centre bas de l'etiquette pose sur le point projete),
+ * sans lire la mise en page a chaque image ; seule la taille de l'element est
+ * lue, puis gardee tant que sa classe de role ne change pas. Parcours glouton
+ * par priorite decroissante : une etiquette qui recouvre une etiquette deja
+ * posee recoit `etiquette--genee` (attenuee ou masquee par la CSS, jamais
+ * retiree : le survol de sa bille la revele, et la liste du panneau reste la
+ * voie fiable).
+ */
+function majEtiquettesGenees() {
+  if (!labelRenderer) return
+  const w = innerWidth, h = innerHeight
+  _boites.length = 0
+  for (const n of noeuds.values()) {
+    if (!n.ancre) continue
+    const priorite = n.ancre.visible ? PRIORITE[n.role] : undefined
+    if (priorite === undefined) {
+      poserGenee(n, false)
+      continue
+    }
+    n.etiquette.getWorldPosition(_ecran).project(camera)
+    if (_ecran.z < -1 || _ecran.z > 1) {
+      poserGenee(n, false)
+      continue
+    }
+    if (!n.taille) {
+      const element = n.etiquette.element
+      // Largeur nulle : l'element est encore en display none (premier rendu) ;
+      // on ne garde pas cette mesure, elle sera refaite a l'image suivante.
+      if (element.offsetWidth === 0) continue
+      n.taille = { l: element.offsetWidth, h: element.offsetHeight }
+    }
+    const x = (_ecran.x * 0.5 + 0.5) * w, y = (-_ecran.y * 0.5 + 0.5) * h
+    // Titre qui deborderait de la fenetre : on le fait glisser le long de son
+    // point d'ancrage (center.x du CSS2DObject : .5 = centre sur la bille) au
+    // lieu de le laisser coupe. Applique au rendu suivant, d'ou marquerSale.
+    const gauche = Math.max(BORD_ECRAN, Math.min(x - n.taille.l / 2, w - BORD_ECRAN - n.taille.l))
+    const centre = n.taille.l >= w - 2 * BORD_ECRAN ? 0.5 : Math.max(0, Math.min(1, (x - gauche) / n.taille.l))
+    if (Math.abs(centre - n.etiquette.center.x) > 0.01) {
+      n.etiquette.center.x = centre
+      marquerSale()
+    }
+    const x0 = x - n.taille.l * n.etiquette.center.x
+    _boites.push({
+      n,
+      rang: priorite + (n.note.id === survolId ? 8 : 0) - (n.derriere ? 1.5 : 0),
+      x0: x0 + MARGE_BOITE, x1: x0 + n.taille.l - MARGE_BOITE,
+      y0: y - n.taille.h + MARGE_BOITE, y1: y - MARGE_BOITE,
+    })
+  }
+  _boites.sort((a, b) => b.rang - a.rang)
+  for (let i = 0; i < _boites.length; i++) {
+    const b = _boites[i]
+    let genee = false
+    for (let j = 0; j < i && !genee; j++) {
+      const a = _boites[j]
+      genee = !a.genee && b.x0 < a.x1 && a.x0 < b.x1 && b.y0 < a.y1 && a.y0 < b.y1
+    }
+    b.genee = genee
+    poserGenee(b.n, genee)
+  }
+}
+
+function poserGenee(n, genee) {
+  if (genee === n.genee) return
+  n.genee = genee
+  n.etiquette.element.classList.toggle('etiquette--genee', genee)
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +511,68 @@ export function sphereDe(id) {
   const n = noeuds.get(id)
   const centre = n?.ancre ? n.ancre.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3()
   return { centre, rayon: rayonNiveau(niveauDe(id)) }
+}
+
+// Points de vue candidats pour cadrer un globe : azimut tous les 15°, latitude
+// entre -40° et +40° (l'horizon reste lisible ; controls.js#orienterVers borne
+// de toute facon l'angle polaire). 120 directions, calculees une fois. Azimuts
+// decales de 7.5° : jamais dans le plan d'un meridien (multiples de 30°), qui se
+// reduirait sinon a un trait vertical en plein centre du globe.
+const VUES = []
+for (let lon = 7.5; lon < 360; lon += 15) for (const lat of [-40, -20, 0, 20, 40]) VUES.push(pointUnite(lon, lat))
+const _versCamera = new THREE.Vector3()
+
+/**
+ * Lisibilite d'une fille vue depuis une direction, selon c = vue·position :
+ * - c <= .33 : au dos du globe ou sur sa tranche (rayon / distance de cadrage
+ *   ≈ .33 en paysage) → 0 ;
+ * - .45 a .8 : de face, a mi-chemin entre le centre et le bord → 1 ;
+ * - vers 1 : plein axe, la fille passe devant la bille ouverte et son titre → .25.
+ *   A la racine (`axeLibre`), aucune bille n'occupe le centre : l'axe est au
+ *   contraire la meilleure place, la note est centree a l'ecran.
+ */
+function lisibilite(c, axeLibre) {
+  if (c <= 0.33) return 0
+  if (c < 0.45) return (c - 0.33) / 0.12
+  if (axeLibre) return 1 + 0.3 * c
+  if (c <= 0.8) return 1
+  return 1 - 0.75 * ((c - 0.8) / 0.2)
+}
+
+/**
+ * Direction (unitaire, monde) depuis laquelle regarder le globe de `id` pour que
+ * le plus possible de ses filles soient lisibles. Les groupes ne sont jamais
+ * tournes : la position unite d'une fille est aussi sa direction monde. Chaque
+ * vue candidate est notee par la lisibilite de chaque fille ; a egalite, la vue
+ * la plus proche de la camera actuelle l'emporte (le moins de mouvement
+ * possible). Une vue placee du cote du parent est penalisee quand ce parent a une
+ * bille : elle passerait entre le globe ouvert et la camera. Sans fille, on regarde depuis l'exterieur
+ * du globe parent. `null` (racine vide) : l'appelant ne tourne pas.
+ */
+export function directionCadrage(id) {
+  const n = noeuds.get(id)
+  if (!n) return null
+  const soi = n.ancre?.position ?? null
+  // Une note de premier niveau a pour parent la racine, qui n'a pas de bille.
+  const parentABille = soi !== null && n.parentId !== null
+  const filles = enfantsDe(id)
+  if (filles.length === 0) return soi ? soi.clone() : null
+
+  _versCamera.copy(camera.position).sub(sphereDe(id).centre).normalize()
+  let meilleure = null, meilleurScore = -Infinity
+  for (const vue of VUES) {
+    let score = 0.25 * vue.dot(_versCamera)
+    for (const fille of filles) score += lisibilite(vue.dot(fille.ancre.position), !soi)
+    if (parentABille) {
+      const cote = vue.dot(soi) // < 0 : la camera serait du cote du parent
+      score += 0.2 * cote - (cote < -0.2 ? 2 : 0)
+    }
+    if (score > meilleurScore) {
+      meilleurScore = score
+      meilleure = vue
+    }
+  }
+  return meilleure.clone()
 }
 
 /**
@@ -486,6 +635,7 @@ export function ajouterNotes(parentId, notes) {
     noeuds.set(note.id, {
       note, parentId, prof, sBille, ancre, bille, halo, etiquette, trait,
       niveau, grille: null, verre: null, deplie: false, role: 'cache', derriere: false,
+      genee: false, taille: null,
     })
   }
 
@@ -525,11 +675,16 @@ export function assurerGlobe(id) {
 // des meshes opaques ordinaires, donc ceux qui passent derriere la face avant du
 // verre sont ternis a 45 % et cessent de luire — indice de profondeur voulu.
 const CIBLES = {
-  ouverte: { k: K_COEUR, echelle: 1.4, halo: 0.35, trait: 0.15, classe: 'etiquette--ouverte', visible: true },
-  enfant: { k: K_COEUR, echelle: 1, halo: 0, trait: 0.78, classe: 'etiquette--enfant', visible: true },
-  petit: { k: 0.6, echelle: 1, halo: 0, trait: 0.3, classe: 'etiquette--petit', visible: true },
-  voisin: { k: 0.3, echelle: 1, halo: 0, trait: 0.15, classe: 'etiquette--cachee', visible: true },
-  ancetre: { k: 0.3, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: true },
+  ouverte: { k: K_COEUR, echelle: 1.4, halo: 0.35, trait: 0.12, classe: 'etiquette--ouverte', visible: true },
+  // Traits : .5 suffit a lire la relation mere → fille sans rivaliser avec les
+  // titres (.78 dessinait des rayons plus presents que le texte).
+  enfant: { k: K_COEUR, echelle: 1, halo: 0, trait: 0.5, classe: 'etiquette--enfant', visible: true },
+  petit: { k: 0.6, echelle: 1, halo: 0, trait: 0.2, classe: 'etiquette--petit', visible: true },
+  // Freres et ancetres : proches de la camera, ce sont de grands disques ; a k .3
+  // ils formaient des taches ocre plus visibles que la note ouverte. Ils restent
+  // cliquables et leur titre apparait toujours au survol.
+  voisin: { k: 0.2, echelle: 1, halo: 0, trait: 0.1, classe: 'etiquette--cachee', visible: true },
+  ancetre: { k: 0.1, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: true },
   cache: { k: 0, echelle: 1, halo: 0, trait: 0, classe: 'etiquette--cachee', visible: false },
 }
 const CLASSES_TIER = ['etiquette--ouverte', 'etiquette--enfant', 'etiquette--petit', 'etiquette--cachee']
@@ -555,9 +710,9 @@ function roleDe(n, o, chemin) {
 
 /** Etat du globe `g` (id ou null) pour un id ouvert `o`. */
 function etatGlobe(g, o) {
-  if (g === o) return { echelle: 1, grille: 0.18, verre: 0.55, visible: true }
+  if (g === o) return { echelle: 1, grille: GRILLE_OUVERTE, verre: 0.55, visible: true }
   // Le globe parent de la note ouverte reste en grille legere, sans verre.
-  if (o !== null && g === noeuds.get(o)?.parentId) return { echelle: 1, grille: 0.06, verre: 0, visible: true }
+  if (o !== null && g === noeuds.get(o)?.parentId) return { echelle: 1, grille: GRILLE_PARENT, verre: 0, visible: true }
   return { echelle: echelleDepart(g), grille: 0, verre: 0, visible: false }
 }
 
@@ -623,7 +778,10 @@ export function appliquerEtat(depuisId, versId, p) {
     if (!classes.contains(classe)) {
       classes.remove(...CLASSES_TIER)
       classes.add(classe)
+      n.taille = null // la taille de police depend du role
     }
+    // Fin de transition : la police a fini de changer de taille, on remesure.
+    if (p === 1 && depuisId !== versId) n.taille = null
 
     n.ancre.visible = p < 1 ? A.visible || B.visible : B.visible
     n.role = p < 1 ? (B.visible ? roleB : roleA) : roleB
@@ -730,6 +888,7 @@ export function renommerNote(note) {
   if (!n?.ancre) return
   n.note = note
   n.etiquette.element.textContent = note.titre
+  n.taille = null
   marquerSale()
 }
 
