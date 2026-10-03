@@ -207,6 +207,8 @@ async function parcours(navigateur, nom, url, arbre) {
   await positionEtiquette(page, R.id)
   await page.waitForTimeout(800)
   verifier(await page.isVisible('#aide'), 'racine : aide de premiere visite affichee')
+  const bloom = await page.evaluate(async () => (await import('/static/scene.js')).BLOOM_ACTIF)
+  verifier(bloom === !tactile, `bloom ${bloom ? 'actif' : 'coupe'} (attendu : ${tactile ? 'coupe sur telephone' : 'actif sur bureau'})`)
   await etape('1-racine')
 
   await viser(await positionEtiquette(page, R.id))
