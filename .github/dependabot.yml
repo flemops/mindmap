@@ -1,0 +1,11 @@
+# Une PR groupée par mois : pas de bruit quotidien. Actions épinglées par SHA, mises à jour à la main.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      npm-deps:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
