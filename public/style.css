@@ -358,6 +358,7 @@ button.danger:hover { border-color: var(--ambre); color: var(--ambre); }
   /* HUD empile en bas plutot que masque : fil d'Ariane et recherche restent
      utilisables sans clavier physique ni geste d'agrandissement. */
   #hud-haut {
+    z-index: 15; /* au-dessus de #panneau-note : les resultats de recherche qui le chevauchent restent cliquables */
     top: auto;
     bottom: 0;
     left: 0;
