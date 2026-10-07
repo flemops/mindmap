@@ -1,0 +1,23 @@
+name: CI automation
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  schedule:
+    - cron: "31 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    uses: flemops/ci-templates/.github/workflows/automation-baseline.yml@ac23bf8c2b5439b638a62bc5cc2e6ca1b1b1053b
+    with:
+      ecosystem: node
+      node_version: "22"
+      install_cmd: npm ci
+      test_cmd: npm test
+      audit_cmd: npm audit --omit=dev --audit-level=high
