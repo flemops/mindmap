@@ -1,6 +1,8 @@
 # Mindmap
 
-<!-- déploiement continu (pull-based) actif depuis le 09/09/2026 -->
+[Demo en ligne](https://mindmap.hamdy-tabsissi.com) · projet personnel · statut : actif, en production.
+
+![Mindmap : une note ouverte et ses notes filles autour d'elle](docs/captures/accueil-bureau-note.png)
 
 Mindmap 3D a navigation spatiale : chaque note contient ses propres notes.
 
@@ -11,6 +13,16 @@ on ne change pas de fenetre, le monde grandit autour de ce qu'on ouvre. Le
 contenu de la note ouverte s'affiche dans un panneau lateral.
 
 Piece de portfolio : **Three.js, aucune librairie de mind-map**.
+
+## Ce que Hamdy a fait
+
+Conception de l'interaction, modele de donnees (une table recursive), rendu Three.js, API, deploiement et exploitation. Des assistants de code (Claude Code) ont servi d'aide au developpement ; les choix, la verification et l'exploitation sont ceux de l'auteur.
+
+## Preuve
+
+- Demo publique en lecture : <https://mindmap.hamdy-tabsissi.com>.
+- Tests : `npm test` (smoke serveur) et `npm run verifier` (parcours navigateur reels, 319/390/1440 px, console, captures) ; deploiement continu verrouille par ces controles.
+- Limites de rendu documentees plutot que masquees : [docs/LIMITES.md](docs/LIMITES.md).
 
 ## Pile
 
@@ -113,3 +125,14 @@ peut encore l'avoir en cache (7 jours).
 - `public/vendor/` — Three.js et camera-controls vendores (voir ci-dessus)
 - `scripts/verifier.mjs` — verification navigateur de bout en bout (Chrome du systeme, playwright-core)
 - `scripts/hooks/` — hooks Claude Code du projet (syntaxe apres edition, tests et verification avant fin de tache)
+
+## Limites
+
+- Projet de demonstration : un seul auteur, un seul utilisateur en ecriture.
+- La fluidite du rendu 3D ne se mesure que dans un Chrome visible ; aucun test de performance automatise.
+- L'ecriture (`/edit`, `/api/write/*`) depend d'une couche d'authentification externe (Cloudflare Access) qui n'est pas fournie par ce depot : en l'absence de cette couche, ne pas exposer ces routes.
+- Les notes de la branche « Sur le site » viennent d'un portfolio prive et ne sont pas incluses ici ; une installation neuve demarre sur des donnees d'exemple.
+
+## Licence
+
+[MIT](LICENSE) pour le code de ce depot. Three.js et camera-controls (dans `public/vendor/`) conservent leur propre licence (fichiers `LICENSE` de chaque dossier).
