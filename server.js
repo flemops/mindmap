@@ -1,6 +1,5 @@
 // Toute l'authentification est geree en amont par Cloudflare Access, en
-// path-policy sur /edit* et /api/write/* (voir ETAT-CHANTIERS.md du depot
-// atelier-claude pour la configuration exacte). Ce serveur n'implemente et
+// path-policy sur /edit* et /api/write/*. Ce serveur n'implemente et
 // ne doit JAMAIS implementer de logique de mot de passe : Access garantit
 // que ces routes ne sont atteintes que par une session deja authentifiee.
 import express from 'express'
